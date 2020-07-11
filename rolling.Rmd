@@ -1,5 +1,8 @@
 ---
 title: "rolling"
+author: "Renato Cava"
+date: "10/7/2020"
+output: github_document
 ---
 
 ```{r}

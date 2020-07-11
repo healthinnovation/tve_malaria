@@ -1,8 +1,5 @@
 ---
 title: "rolling"
-author: "Renato Cava"
-date: "10/7/2020"
-output: rmarkdown::github_document
 ---
 
 ```{r}

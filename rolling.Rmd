@@ -1,11 +1,11 @@
 ---
-title: "rolling"
-author: "Renato Cava"
-date: "10/7/2020"
-output: github_document
+title: "Rolling"
+output:
+  github_document:
+    df_print: "kable"
 ---
 
-```{r}
+```{r echo=FALSE}
 df<-read.csv("./_data/dt_final.csv")
 head(df)
 ```

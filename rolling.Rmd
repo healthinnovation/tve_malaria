@@ -19,14 +19,10 @@ head(dt_final)
 ```
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
-lubridate::parse_date_time(dt_final$year, "Y")
-lubridate::year(lubridate::parse_date_time(dt_final$year, "Y"))
 dt_final$year <- lubridate::year(lubridate::parse_date_time(dt_final$year, "Y"))
 ```
 
 ```{r message=FALSE, warning=FALSE, include=FALSE}
-lubridate::parse_date_time(dt_final$month, "m")
-lubridate::month(lubridate::parse_date_time(dt_final$month, "m"))
 dt_final$month <- lubridate::month(lubridate::parse_date_time(dt_final$month, "m"))
 ```
 

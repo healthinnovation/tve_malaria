@@ -3,10 +3,46 @@ title: "Rolling"
 output:
   github_document:
     df_print: "kable"
+    fig_width: 12
+    fig_height: 9
 ---
 
-```{r echo=FALSE}
-df<-read.csv("./_data/dt_final.csv")
-head(df)
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(magrittr)
+library(corrr)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dt_final<-read.csv("./_data/dt_final.csv")
+head(dt_final)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+lubridate::parse_date_time(dt_final$year, "Y")
+lubridate::year(lubridate::parse_date_time(dt_final$year, "Y"))
+dt_final$year <- lubridate::year(lubridate::parse_date_time(dt_final$year, "Y"))
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+lubridate::parse_date_time(dt_final$month, "m")
+lubridate::month(lubridate::parse_date_time(dt_final$month, "m"))
+dt_final$month <- lubridate::month(lubridate::parse_date_time(dt_final$month, "m"))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dt_final %>% 
+  select(falciparum:tmax) %>% 
+  correlate() %>% 
+  rplot(shape = 15, colors = c("red", "green"))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dt_final %>% 
+  select(NOMBDIST, year, month, falciparum) %>% 
+  mutate(fecha = lubridate::make_date(year = year, month = month, day = 1L)) %>%
+  ggplot(aes(x=fecha, y=falciparum, group = NOMBDIST, colour = NOMBDIST)) +
+    theme(legend.position = "none") +
+    geom_line()+facet_wrap(.~NOMBDIST)
 ```
 

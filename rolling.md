@@ -13,3 +13,7 @@ Rolling
 | ALTO NANAY | 2000 |     6 |          1 |     0 | 67.14399 | 163.2931 |  96.14824 | 35.93226 | 30.18416 | 21.13831 |              0 |    0 |         0 |              0 |    0 |      0 |    0 |       0 |       0 |    2784 | MAYNAS   | LORETO  | 160102 |
 
 </div>
+
+![](rolling_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+
+![](rolling_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->

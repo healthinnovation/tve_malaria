@@ -9,36 +9,83 @@ output:
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 library(tidyverse)
-library(magrittr)
 library(corrr)
+library(magrittr)
+library(MASS)
+library(slider)
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+### Carga de datos
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 dt_final<-read.csv("./_data/dt_final.csv")
 head(dt_final)
 ```
 
-```{r message=FALSE, warning=FALSE, include=FALSE}
-dt_final$year <- lubridate::year(lubridate::parse_date_time(dt_final$year, "Y"))
+### Configurando
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dt_final %<>% 
+  mutate(
+    year = lubridate::year(lubridate::parse_date_time(dt_final$year, "Y")),
+    month = lubridate::month(lubridate::parse_date_time(dt_final$month, "m"))
+  ) %>% 
+  add_column(fecha = lubridate::make_date(year = dt_final$year, month = dt_final$month, day = 1L)) %>% 
+  arrange(fecha)
 ```
 
-```{r message=FALSE, warning=FALSE, include=FALSE}
-dt_final$month <- lubridate::month(lubridate::parse_date_time(dt_final$month, "m"))
-```
+### Matriz grafica de correlaciones
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 dt_final %>% 
-  select(falciparum:tmax) %>% 
+  dplyr::select(falciparum:tmax) %>% 
   correlate() %>% 
   rplot(shape = 15, colors = c("red", "green"))
 ```
 
-```{r echo=FALSE, message=FALSE, warning=FALSE}
+### Incidencia de falciparum en el tiempo por distrito
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 dt_final %>% 
-  select(NOMBDIST, year, month, falciparum) %>% 
+  dplyr::select(NOMBDIST, year, month, falciparum) %>% 
   mutate(fecha = lubridate::make_date(year = year, month = month, day = 1L)) %>%
   ggplot(aes(x=fecha, y=falciparum, group = NOMBDIST, colour = NOMBDIST)) +
     theme(legend.position = "none") +
     geom_line()+facet_wrap(.~NOMBDIST)
 ```
+
+### Incidencia de vivax en el tiempo por distrito
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dt_final %>% 
+  dplyr::select(NOMBDIST, year, month, vivax) %>% 
+  mutate(fecha = lubridate::make_date(year = year, month = month, day = 1L)) %>%
+  ggplot(aes(x=fecha, y=vivax, group = NOMBDIST, colour = NOMBDIST)) +
+  theme(legend.position = "none") +
+  geom_line()+facet_wrap(.~NOMBDIST)
+```
+
+### Coeficientes de regresion en el tiempo
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+myfunct<-function(d){
+  df<-slide_period_dfr(
+    .x = d,
+    .i = d$fecha,
+    .period = "month",
+    ~data.frame(
+      intercepto = coefficients(glm.nb(vivax ~ aet + prcp + q + soilm + tmax, data = .x))[[1]],
+      beta1 = coefficients(glm.nb(vivax ~ aet + prcp + q + soilm + tmax, data = .x))[[2]]
+    ),
+    .every = 12
+  )
+} 
+
+res<-myfunct(dt_final)
+
+ggplot(data = res, aes(x = seq(2000,2017), y=beta1)) +
+  labs(y= "Beta (aet)", x = "Año") +
+  geom_line()
+```
+
 

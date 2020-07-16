@@ -1,6 +1,13 @@
 Rolling
 ================
 
+### Carga de datos
+
+``` r
+dt_final<-read.csv("./_data/dt_final.csv")
+head(dt_final)
+```
+
 <div class="kable-table">
 
 | NOMBDIST   | year | month | falciparum | vivax |      aet |     prcp |         q |    soilm |     tmax |     tmin | water\_deficit | loss | loss\_km2 | cum\_loss\_km2 | diag | enviro | nets | workers | pamafro | pop2015 | NOMBPROV | NOMBDEP | IDDIST |
@@ -14,6 +21,76 @@ Rolling
 
 </div>
 
+### Configurando
+
+``` r
+dt_final %<>% 
+  mutate(
+    year = lubridate::year(lubridate::parse_date_time(dt_final$year, "Y")),
+    month = lubridate::month(lubridate::parse_date_time(dt_final$month, "m"))
+  ) %>% 
+  add_column(fecha = lubridate::make_date(year = dt_final$year, month = dt_final$month, day = 1L)) %>% 
+  arrange(fecha)
+```
+
+### Matriz grafica de correlaciones
+
+``` r
+dt_final %>% 
+  dplyr::select(falciparum:tmax) %>% 
+  correlate() %>% 
+  rplot(shape = 15, colors = c("red", "green"))
+```
+
+![](rolling_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+
+### Incidencia de falciparum en el tiempo por distrito
+
+``` r
+dt_final %>% 
+  dplyr::select(NOMBDIST, year, month, falciparum) %>% 
+  mutate(fecha = lubridate::make_date(year = year, month = month, day = 1L)) %>%
+  ggplot(aes(x=fecha, y=falciparum, group = NOMBDIST, colour = NOMBDIST)) +
+    theme(legend.position = "none") +
+    geom_line()+facet_wrap(.~NOMBDIST)
+```
+
 ![](rolling_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
+### Incidencia de vivax en el tiempo por distrito
+
+``` r
+dt_final %>% 
+  dplyr::select(NOMBDIST, year, month, vivax) %>% 
+  mutate(fecha = lubridate::make_date(year = year, month = month, day = 1L)) %>%
+  ggplot(aes(x=fecha, y=vivax, group = NOMBDIST, colour = NOMBDIST)) +
+  theme(legend.position = "none") +
+  geom_line()+facet_wrap(.~NOMBDIST)
+```
+
 ![](rolling_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+
+### Coeficientes de regresion en el tiempo
+
+``` r
+myfunct<-function(d){
+  df<-slide_period_dfr(
+    .x = d,
+    .i = d$fecha,
+    .period = "month",
+    ~data.frame(
+      intercepto = coefficients(glm.nb(vivax ~ aet + prcp + q + soilm + tmax, data = .x))[[1]],
+      beta1 = coefficients(glm.nb(vivax ~ aet + prcp + q + soilm + tmax, data = .x))[[2]]
+    ),
+    .every = 12
+  )
+} 
+
+res<-myfunct(dt_final)
+
+ggplot(data = res, aes(x = seq(2000,2017), y=beta1)) +
+  labs(y= "Beta (aet)", x = "Año") +
+  geom_line()
+```
+
+![](rolling_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->

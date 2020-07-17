@@ -66,26 +66,108 @@ dt_final %>%
 ```
 
 ### Coeficientes de regresion en el tiempo
+#### Falciparum - Ventanas de 12 meses
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
-myfunct<-function(d){
-  df<-slide_period_dfr(
-    .x = d,
-    .i = d$fecha,
-    .period = "month",
-    ~data.frame(
-      intercepto = coefficients(glm.nb(vivax ~ aet + prcp + q + soilm + tmax, data = .x))[[1]],
-      beta1 = coefficients(glm.nb(vivax ~ aet + prcp + q + soilm + tmax, data = .x))[[2]]
-    ),
-    .every = 12
-  )
-} 
+df_betas <- slide_period_dfr(
+  .x = dt_final,
+  .i = dt_final$fecha,
+  .period = "month",
+  ~data.frame(
+    Aet = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[2]],
+    Prcp = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[3]],
+    Solim = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[4]],
+    Tmax = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[5]]
+  ),
+  .every = 12,
+  .complete = T
+)
 
-res<-myfunct(dt_final)
-
-ggplot(data = res, aes(x = seq(2000,2017), y=beta1)) +
-  labs(y= "Beta (aet)", x = "Año") +
-  geom_line()
+for (i in colnames(df_betas)) {
+  print(ggplot(data = df_betas, aes(x = seq(2000,2017), y=.data[[i]])) +
+          labs(y= "Coeficiente", x = "Año") +
+          labs(title=i) +
+          geom_line())
+}
 ```
 
+### Coeficientes de regresion en el tiempo
+#### Vivax - Ventanas de 12 meses
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+df_betas <- slide_period_dfr(
+  .x = dt_final,
+  .i = dt_final$fecha,
+  .period = "month",
+  ~data.frame(
+    Aet = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[2]],
+    Prcp = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[3]],
+    Solim = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[4]],
+    Tmax = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[5]]
+  ),
+  .every = 12,
+  .complete = T
+)
+
+for (i in colnames(df_betas)) {
+  print(ggplot(data = df_betas, aes(x = seq(2000,2017), y=.data[[i]])) +
+          labs(y= "Coeficiente", x = "Año") +
+          labs(title=i) +
+          geom_line())
+}
+```
+
+### Coeficientes de regresion en el tiempo
+#### Falciparum - Ventanas de 12 meses cada mes
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+df_betas <- slide_period_dfr(
+  .x = dt_final,
+  .i = dt_final$fecha,
+  .period = "month",
+  ~data.frame(
+    Aet = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[2]],
+    Prcp = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[3]],
+    Solim = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[4]],
+    Tmax = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[5]]
+  ),
+  .every = 1,
+  .after = 11,
+  .complete = T
+)
+
+for (i in colnames(df_betas)) {
+  print(ggplot(data = df_betas, aes(x = seq(1,205), y=.data[[i]])) +
+          labs(y= "Coeficiente", x = "Mes") +
+          labs(title=i) +
+          geom_line())
+}
+```
+
+### Coeficientes de regresion en el tiempo
+#### Vivax - Ventanas de 12 meses cada mes
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+df_betas <- slide_period_dfr(
+  .x = dt_final,
+  .i = dt_final$fecha,
+  .period = "month",
+  ~data.frame(
+    Aet = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[2]],
+    Prcp = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[3]],
+    Solim = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[4]],
+    Tmax = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[5]]
+  ),
+  .every = 1,
+  .after = 11,
+  .complete = T
+)
+
+for (i in colnames(df_betas)) {
+  print(ggplot(data = df_betas, aes(x = seq(1,205), y=.data[[i]])) +
+          labs(y= "Coeficiente", x = "Mes") +
+          labs(title=i) +
+          geom_line())
+}
+```
 

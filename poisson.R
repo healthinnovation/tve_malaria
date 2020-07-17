@@ -2,6 +2,7 @@ library(tidyverse)
 library(corrr)
 library(magrittr)
 library(MASS)
+library(pscl)
 library(slider)
 
 # Carga
@@ -19,13 +20,13 @@ dt_final %<>%
 
 # Matriz grafica de correlaciones
 dt_final %>% 
-  select(falciparum:tmax) %>% 
+  dplyr::select(falciparum:tmin) %>% 
   correlate() %>% 
   rplot(shape = 15, colors = c("red", "green"))
 
 # Incidencia  de falciparum en el tiempo por distrito
 dt_final %>% 
-  select(NOMBDIST, year, month, falciparum) %>% 
+  dplyr::select(NOMBDIST, year, month, falciparum) %>% 
   mutate(fecha = lubridate::make_date(year = year, month = month, day = 1L)) %>%
   ggplot(aes(x=fecha, y=falciparum, group = NOMBDIST, colour = NOMBDIST)) +
     theme(legend.position = "none") +
@@ -33,17 +34,15 @@ dt_final %>%
 
 # Incidencia  de vivax en el tiempo por distrito
 dt_final %>% 
-  select(NOMBDIST, year, month, vivax) %>% 
+  dplyr::select(NOMBDIST, year, month, vivax) %>% 
   mutate(fecha = lubridate::make_date(year = year, month = month, day = 1L)) %>%
   ggplot(aes(x=fecha, y=vivax, group = NOMBDIST, colour = NOMBDIST)) +
   theme(legend.position = "none") +
   geom_line()+facet_wrap(.~NOMBDIST)
 
-# Agrupar por Distritos
-df<-dt_final %>%
-  group_by(NOMBDIST) %>% 
-  nest() %>% 
-  mutate(model=map(data,myfunct))
+
+
+
   
 # Modelo Poisson
 p <- glm(falciparum ~ aet + prcp + q + soilm + tmax, data = dt_final, family = poisson(link = "log"))
@@ -52,57 +51,89 @@ logLik(p)
 
 # Modelo Binomial Negativo
 nb <- glm.nb(falciparum ~ aet + prcp + q + soilm + tmax, data = dt_final)
-coefficients(glm.nb(falciparum ~ aet + prcp + q + soilm + tmax, data = dt_final))[[2]]
+coef(nb)[[2]]
 nb$coefficients
 summary(nb)
 logLik(nb)
 
+# Modelo Hurdle
+h <- hurdle(falciparum ~ aet + prcp + q + soilm + tmax, data = dt_final, dist = "negbin")
+summary(h)
+logLik(h)
+
 # Rolling regression binomial negativa
-myfunct<-function(d){
-  df<-slide_period_dfr(
-    .x = d,
-    .i = d$fecha,
-    .period = "month",
-    ~data.frame(
-      intercepto = coef(lm(falciparum ~ aet,data = .x))[[1]],
-      beta1 = coef(lm(falciparum ~ aet,data = .x))[[2]]
-    ),
-    .every = 12
-  )
-} 
+df_betas <- slide_period_dfr(
+  .x = dt_final,
+  .i = dt_final$fecha,
+  .period = "month",
+  ~data.frame(
+    Aet = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[2]],
+    Prcp = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[3]],
+    Solim = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[4]],
+    Tmax = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[5]]
+  ),
+  .every = 1,
+  .after = 11,
+  .complete = T
+)
 
-res<-myfunct(dt_final)
-res
+df_betas
 
+colnames(df_betas)
 
-for(i in seq(1,49)){
-  print(ggplot(data = df$model[[i]], aes(x = seq(2000,2017), y=beta1)) +
-    labs(y= "Beta (aet)", x = "Año") +
-    geom_line()
-  )
+for (i in colnames(df_betas)) {
+  print(i)
 }
 
-ggplot(data = df$model[[1]], aes(x = seq(2000,2017), y=beta1)) +
-  labs(y= "Beta (aet)", x = "Año") +
-  geom_line()
+for (i in colnames(df_betas)) {
+  print(ggplot(data = df_betas, aes(x = seq(1,205), y=.data[[i]])) +
+          labs(y= "Coeficiente", x = "Mes") +
+          labs(title=i) +
+          geom_line())
+}
 
 
+
+
+###############################
+
+# Agrupar por Distritos
+df<-dt_final %>%
+  group_by(NOMBDIST) %>% 
+  nest() %>% 
+  mutate(model=map(data,myfunct))
 
 myfunct<-function(d){
-  df<-slide_period_dfr(
+  slide_period_dfr(
     .x = d,
     .i = d$fecha,
     .period = "month",
     ~data.frame(
-      intercepto = coef(glm.nb(vivax ~ aet + prcp + q + soilm + tmax, data = .x))[[1]],
-      beta1 = coef(glm.nb(vivax ~ aet + prcp + q + soilm + tmax, data = .x))[[2]]
+      beta1 = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[2]],
+      beta2 = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[3]],
+      beta3 = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[4]],
+      beta4 = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[5]]
     ),
-    .every = 12
+    .every = 12,
+    .complete = T
   )
-} 
+}
 
 res<-myfunct(dt_final)
 
 ggplot(data = res, aes(x = seq(2000,2017), y=beta1)) +
+  labs(y= "Beta (aet)", x = "Año") +
+  geom_line()
+
+for(i in seq(1,49)){
+  print(ggplot(data = df$model[[i]], aes(x = seq(2000,2017), y=beta1)) +
+          labs(y= "Beta (aet)", x = "Año") +
+          geom_line()
+  )
+}
+
+
+
+ggplot(data = df$model[[1]], aes(x = seq(2000,2017), y=beta1)) +
   labs(y= "Beta (aet)", x = "Año") +
   geom_line()

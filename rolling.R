@@ -4,6 +4,7 @@ library(magrittr)
 library(MASS)
 library(pscl)
 library(slider)
+library(purrr)
 
 # Carga
 dt_final<-read.csv("./_data/dt_final.csv")
@@ -40,24 +41,20 @@ dt_final %>%
   theme(legend.position = "none") +
   geom_line()+facet_wrap(.~NOMBDIST)
 
-
-
-
-  
 # Modelo Poisson
-p <- glm(falciparum ~ aet + prcp + q + soilm + tmax, data = dt_final, family = poisson(link = "log"))
+p <- glm(falciparum ~ aet + prcp + soilm + tmax, data = dt_final, family = poisson(link = "log"))
 summary(p)
 logLik(p)
 
 # Modelo Binomial Negativo
-nb <- glm.nb(falciparum ~ aet + prcp + q + soilm + tmax, data = dt_final)
+nb <- glm.nb(falciparum ~ aet + prcp + soilm + tmax, data = dt_final)
 coef(nb)[[2]]
 nb$coefficients
 summary(nb)
 logLik(nb)
 
 # Modelo Hurdle
-h <- hurdle(falciparum ~ aet + prcp + q + soilm + tmax, data = dt_final, dist = "negbin")
+h <- hurdle(falciparum ~ aet + prcp + soilm + tmax, data = dt_final, dist = "negbin")
 summary(h)
 logLik(h)
 
@@ -73,7 +70,8 @@ df_betas <- slide_period_dfr(
     Tmax = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[5]]
   ),
   .every = 1,
-  .after = 11,
+  .before = 6,
+  .after = 5,
   .complete = T
 )
 
@@ -93,15 +91,15 @@ for (i in colnames(df_betas)) {
 }
 
 
-
-
+df_betas %>%
+  mutate(num = 1:205) %>% 
+  gather(coef, valor, Aet:Tmax) %>% 
+  ggplot(aes(x=num,y=valor))+geom_line()+facet_wrap(.~coef,scales = "free")
+  
+  
 ###############################
 
 # Agrupar por Distritos
-df<-dt_final %>%
-  group_by(NOMBDIST) %>% 
-  nest() %>% 
-  mutate(model=map(data,myfunct))
 
 myfunct<-function(d){
   slide_period_dfr(
@@ -109,17 +107,34 @@ myfunct<-function(d){
     .i = d$fecha,
     .period = "month",
     ~data.frame(
-      beta1 = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[2]],
-      beta2 = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[3]],
-      beta3 = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[4]],
-      beta4 = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[5]]
+      Aet = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[2]],
+      Prcp = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[3]],
+      Solim = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[4]],
+      Tmax = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[5]]
     ),
     .every = 12,
+    .before = 0,
+    .after = 0,
     .complete = T
   )
 }
 
+df <- dt_final %>%
+  group_by(NOMBDIST) %>% 
+  nest()
+
+df_betas[[1]] <- myfunct(df$data[[1]])
+
+df_betas = vector(mode = "list", length = 49)
+for(i in 1:49){
+  df_betas[[i]] <- myfunct(df$data[[i]])
+}
+
+
+
 res<-myfunct(dt_final)
+
+
 
 ggplot(data = res, aes(x = seq(2000,2017), y=beta1)) +
   labs(y= "Beta (aet)", x = "Año") +

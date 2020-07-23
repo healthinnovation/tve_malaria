@@ -15,6 +15,8 @@ library(corrr)
 library(magrittr)
 library(MASS)
 library(slider)
+library(ggpubr)
+
 ```
 
 ### Carga de datos
@@ -45,74 +47,152 @@ dt_final %>%
   rplot(shape = 15, colors = c("red", "green"))
 ```
 
-### Incidencia de falciparum en el tiempo por distrito
+### Incidencia de Falciparum y Vivax en el tiempo
+
+```{r}
+dt_final %>% 
+  group_by(fecha) %>% 
+  summarise(
+    sum_falciparum = sum(falciparum),
+    sum_vivax = sum(vivax)
+  ) %>% 
+  ggplot(aes(x = fecha)) +
+  geom_line(aes(y = sum_falciparum, colour = "sum_falciparum")) +
+  geom_line(aes(y = sum_vivax, colour = "sum_vivax")) +
+  labs(y= "Incidencia", x = "Meses")
+```
+
+### Incidencia de Falciparum y Vivax en el tiempo por provincia
+
+```{r}
+dt_final %>% 
+  group_by(NOMBPROV, fecha) %>% 
+  summarise(
+    sum_falciparum = sum(falciparum),
+    sum_vivax = sum(vivax)
+  ) %>% 
+  ggplot(aes(x=fecha, group = NOMBPROV, colour = NOMBPROV)) +
+  geom_line(aes(y=sum_falciparum, colour = "sum_falciparum")) +
+  geom_line(aes(y=sum_vivax, colour = "sum_vivax")) +
+  facet_wrap(.~NOMBPROV, scales = "free")
+```
+
+### Incidencia de Falciparum y Vivax en el tiempo por distrito
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
 dt_final %>% 
-  dplyr::select(NOMBDIST, year, month, falciparum) %>% 
-  mutate(fecha = lubridate::make_date(year = year, month = month, day = 1L)) %>%
-  ggplot(aes(x=fecha, y=falciparum, group = NOMBDIST, colour = NOMBDIST)) +
-    theme(legend.position = "none") +
-    geom_line()+facet_wrap(.~NOMBDIST)
-```
-
-### Incidencia de vivax en el tiempo por distrito
-
-```{r echo=TRUE, message=FALSE, warning=FALSE}
-dt_final %>% 
-  dplyr::select(NOMBDIST, year, month, vivax) %>% 
-  mutate(fecha = lubridate::make_date(year = year, month = month, day = 1L)) %>%
-  ggplot(aes(x=fecha, y=vivax, group = NOMBDIST, colour = NOMBDIST)) +
-  theme(legend.position = "none") +
-  geom_line()+facet_wrap(.~NOMBDIST)
+  dplyr::select(NOMBDIST, fecha, falciparum, vivax) %>% 
+  ggplot(aes(x=fecha, group = NOMBDIST)) +
+  geom_line(aes(y = falciparum, colour = "falciparum")) +
+  geom_line(aes(y = vivax, colour = "vivax")) +
+  facet_wrap(.~NOMBDIST, scales = "free")
 ```
 
 ### Coeficientes de regresion en el tiempo
-#### Falciparum - Ventanas de 12 meses cada mes
+#### Falciparum y Vivax - Ventanas de 12 meses cada mes
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
-slide_period_dfr(
-    .x = dt_final,
-    .i = dt_final$fecha,
-    .period = "month",
-    ~data.frame(
-      Aet = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[2]],
-      Prcp = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[3]],
-      Solim = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[4]],
-      Tmax = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[5]]
-    ),
-    .every = 1,
-    .before = 6,
-    .after = 5,
-    .complete = T
-  ) %>% 
-    mutate(num = 1:205) %>% 
-    gather(coef, valor, Aet:Tmax) %>% 
-    ggplot(aes(x=num,y=valor))+geom_line()+facet_wrap(.~coef,scales = "free")
+df <- slide_period_dfr(
+  .x = dt_final,
+  .i = dt_final$fecha,
+  .period = "month",
+  ~data.frame(
+    Aet_falci = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[2]],
+    Aet_falci_min = confint(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[2,1],
+    Aet_falci_max = confint(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[2,2],
+    Aet_vivax = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[2]],
+    Aet_vivax_min = confint(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[2,1],
+    Aet_vivax_max = confint(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[2,2],
+    Aet_mean = mean(.x$aet),
+    Prcp_falci = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[3]],
+    Prcp_falci_min = confint(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[3,1],
+    Prcp_falci_max = confint(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[3,2],
+    Prcp_vivax = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[3]],
+    Prcp_vivax_min = confint(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[3,1],
+    Prcp_vivax_max = confint(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[3,2],
+    Prcp_mean = mean(.x$prcp),
+    Soilm_falci = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[4]],
+    Soilm_falci_min = confint(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[4,1],
+    Soilm_falci_max = confint(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[4,2],
+    Soilm_vivax = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[4]],
+    Soilm_vivax_min = confint(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[4,1],
+    Soilm_vivax_max = confint(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[4,2],
+    Soilm_mean = mean(.x$soilm),
+    Tmax_falci = coef(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[[5]],
+    Tmax_falci_min = confint(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[5,1],
+    Tmax_falci_max = confint(glm.nb(formula = falciparum ~ aet + prcp + soilm + tmax, data = .x))[5,2],
+    Tmax_vivax = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[5]],
+    Tmax_vivax_min = confint(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[5,1],
+    Tmax_vivax_max = confint(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[5,2],
+    Tmax_mean = mean(.x$tmax)
+  ),
+  .every = 1,
+  .before = 6,
+  .after = 5,
+  .complete = T
+) %>% 
+  gather(k, v, Aet_falci:Tmax_mean) %>% 
+  add_column(
+    categoria=rep(c(rep("falci_coef",205),
+                    rep("falci_coef_min",205),
+                    rep("falci_coef_max",205),
+                    rep("vivax_coef",205),
+                    rep("vivax_coef_min",205),
+                    rep("vivax_coef_max",205),
+                    rep("promedio",205)),
+                  4),
+    fecha = rep(seq(as.Date("2000/1/1"), by = "month", length.out = 205),28),
+    variable = c(rep("Aet",1435),rep("Prcp",1435),rep("Soilm",1435),rep("Tmax",1435)))
+
+p1 <- ggplot(data = df, mapping =  aes(x = fecha)) +
+  geom_ribbon(data = filter(df, categoria=="falci_coef_min" & variable=="Aet"), 
+              mapping = aes(ymin = pull(filter(df, categoria=="falci_coef_min" & variable=="Aet"),v), 
+                            ymax = pull(filter(df, categoria=="falci_coef_max" & variable=="Aet"),v)), 
+              alpha = 0.1, fill = "red", linetype = "dashed") +
+  geom_ribbon(data = filter(df, categoria=="falci_coef_min" & variable=="Prcp"), 
+              mapping = aes(ymin = pull(filter(df, categoria=="falci_coef_min" & variable=="Prcp"),v), 
+                            ymax = pull(filter(df, categoria=="falci_coef_max" & variable=="Prcp"),v)), 
+              alpha = 0.1, fill = "red", linetype = "dashed") +
+  geom_ribbon(data = filter(df, categoria=="falci_coef_min" & variable=="Soilm"), 
+              mapping = aes(ymin = pull(filter(df, categoria=="falci_coef_min" & variable=="Soilm"),v), 
+                            ymax = pull(filter(df, categoria=="falci_coef_max" & variable=="Soilm"),v)), 
+              alpha = 0.1, fill = "red", linetype = "dashed") +
+  geom_ribbon(data = filter(df, categoria=="falci_coef_min" & variable=="Tmax"), 
+              mapping = aes(ymin = pull(filter(df, categoria=="falci_coef_min" & variable=="Tmax"),v), 
+                            ymax = pull(filter(df, categoria=="falci_coef_max" & variable=="Tmax"),v)), 
+              alpha = 0.1, fill = "red", linetype = "dashed") +
+  geom_ribbon(data = filter(df, categoria=="vivax_coef_min" & variable=="Aet"), 
+              mapping = aes(ymin = pull(filter(df, categoria=="vivax_coef_min" & variable=="Aet"),v), 
+                            ymax = pull(filter(df, categoria=="vivax_coef_max" & variable=="Aet"),v)), 
+              alpha = 0.1, fill = "blue") +
+  geom_ribbon(data = filter(df, categoria=="vivax_coef_min" & variable=="Prcp"), 
+              mapping = aes(ymin = pull(filter(df, categoria=="vivax_coef_min" & variable=="Prcp"),v), 
+                            ymax = pull(filter(df, categoria=="vivax_coef_max" & variable=="Prcp"),v)), 
+              alpha = 0.1, fill = "blue") +
+  geom_ribbon(data = filter(df, categoria=="vivax_coef_min" & variable=="Soilm"), 
+              mapping = aes(ymin = pull(filter(df, categoria=="vivax_coef_min" & variable=="Soilm"),v), 
+                            ymax = pull(filter(df, categoria=="vivax_coef_max" & variable=="Soilm"),v)), 
+              alpha = 0.1, fill = "blue") +
+  geom_ribbon(data = filter(df, categoria=="vivax_coef_min" & variable=="Tmax"), 
+              mapping = aes(ymin = pull(filter(df, categoria=="vivax_coef_min" & variable=="Tmax"),v), 
+                            ymax = pull(filter(df, categoria=="vivax_coef_max" & variable=="Tmax"),v)), 
+              alpha = 0.1, fill = "blue") +
+  geom_line(data = filter(df, categoria=="falci_coef"), 
+            mapping = aes(y = pull(filter(df, categoria=="falci_coef"),v), col = "falci_coef")) +
+  geom_line(data = filter(df, categoria=="vivax_coef"),
+            mapping = aes(y = pull(filter(df, categoria=="vivax_coef"),v), col = "vivax_coef")) +
+  ylab("Coeficientes") +
+  geom_vline(xintercept = c(as.Date("2006/1/1"),as.Date("2010/12/1")), linetype = "dashed") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_wrap(.~variable, scales = "free", nrow = 4, ncol = 1) +
+  labs(colour = "Spp coef")
+
+p2 <- ggplot(df, aes(x = fecha)) +
+  geom_line(data = filter(df, categoria=="promedio"), aes(y = v)) + 
+  ylab("Promedios") +
+  geom_vline(xintercept = c(as.Date("2006/1/1"),as.Date("2010/12/1")), linetype = "dashed") +
+  facet_wrap(.~variable, scales = "free", nrow = 4, ncol = 1)
+
+ggarrange(p1, p2, ncol = 2, common.legend = T)
 ```
-
-### Coeficientes de regresion en el tiempo
-#### Vivax - Ventanas de 12 meses cada mes
-
-```{r echo=TRUE, message=FALSE, warning=FALSE}
-slide_period_dfr(
-    .x = dt_final,
-    .i = dt_final$fecha,
-    .period = "month",
-    ~data.frame(
-      Aet = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[2]],
-      Prcp = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[3]],
-      Solim = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[4]],
-      Tmax = coef(glm.nb(formula = vivax ~ aet + prcp + soilm + tmax, data = .x))[[5]]
-    ),
-    .every = 1,
-    .before = 6,
-    .after = 5,
-    .complete = T
-  ) %>% 
-    mutate(num = 1:205) %>% 
-    gather(coef, valor, Aet:Tmax) %>% 
-    ggplot(aes(x=num,y=valor))+geom_line()+facet_wrap(.~coef,scales = "free")
-```
-
 

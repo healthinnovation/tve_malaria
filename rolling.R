@@ -135,7 +135,88 @@ dt_final %>%
       common.legend = T
     )
   }
-  
+
+dt_final %>% 
+  summarise(
+    slide_period_dfr(
+      across(everything()),
+      fecha,
+      "month",
+      monthly_model,
+      .every = 1,
+      .before = 9,
+      .after = 8,
+      .complete = T
+    )
+  ) %>% 
+  add_column(
+    variable = rep(c("Aet","Prcp","Soilm","Tmax"), 199),
+    fecha = rep(seq(as.Date("2000/10/1"), by = "month", length.out = 199), each = 4)
+  ) %>% {
+    ggarrange(
+      ggplot(data = ., mapping = aes(x = fecha)) +
+        geom_ribbon(mapping = aes(ymin = coef_falci - error_falci, ymax = coef_falci + error_falci), 
+                    alpha = 0.1, linetype = "dashed", fill = "red") +
+        geom_ribbon(mapping = aes(ymin = coef_vivax - error_vivax, ymax = coef_vivax + error_vivax), 
+                    alpha = 0.1, linetype = "dashed", fill = "blue") +
+        geom_line(mapping = aes(y = coef_falci, col = "Falciparum")) +
+        geom_line(mapping = aes(y = coef_vivax, col = "Vivax")) +
+        ylab("Coeficientes") +
+        geom_vline(xintercept = c(as.Date("2006/1/1"),as.Date("2010/12/1")), linetype = "dashed") +
+        geom_hline(yintercept = 0, linetype = "dashed") +
+        facet_wrap(.~variable, scales = "free", nrow = 4, ncol = 1) +
+        labs(colour = "Spp coef"),
+      ggplot(data = ., aes(x = fecha)) +
+        geom_line(mapping = aes(y = promedios), colour = "purple") + 
+        ylab("Promedios") +
+        geom_vline(xintercept = c(as.Date("2006/1/1"),as.Date("2010/12/1")), linetype = "dashed") +
+        facet_wrap(.~variable, scales = "free", nrow = 4, ncol = 1),
+      ncol = 2, 
+      common.legend = T
+    )
+  }
+
+
+dt_final %>% 
+  summarise(
+    slide_period_dfr(
+      across(everything()),
+      fecha,
+      "month",
+      monthly_model,
+      .every = 1,
+      .before = 12,
+      .after = 11,
+      .complete = T
+    )
+  ) %>% 
+  add_column(
+    variable = rep(c("Aet","Prcp","Soilm","Tmax"), 193),
+    fecha = rep(seq(as.Date("2001/1/1"), by = "month", length.out = 193), each = 4)
+  ) %>% {
+    ggarrange(
+      ggplot(data = ., mapping = aes(x = fecha)) +
+        geom_ribbon(mapping = aes(ymin = coef_falci - error_falci, ymax = coef_falci + error_falci), 
+                    alpha = 0.1, linetype = "dashed", fill = "red") +
+        geom_ribbon(mapping = aes(ymin = coef_vivax - error_vivax, ymax = coef_vivax + error_vivax), 
+                    alpha = 0.1, linetype = "dashed", fill = "blue") +
+        geom_line(mapping = aes(y = coef_falci, col = "Falciparum")) +
+        geom_line(mapping = aes(y = coef_vivax, col = "Vivax")) +
+        ylab("Coeficientes") +
+        geom_vline(xintercept = c(as.Date("2006/1/1"),as.Date("2010/12/1")), linetype = "dashed") +
+        geom_hline(yintercept = 0, linetype = "dashed") +
+        facet_wrap(.~variable, scales = "free", nrow = 4, ncol = 1) +
+        labs(colour = "Spp coef"),
+      ggplot(data = ., aes(x = fecha)) +
+        geom_line(mapping = aes(y = promedios), colour = "purple") + 
+        ylab("Promedios") +
+        geom_vline(xintercept = c(as.Date("2006/1/1"),as.Date("2010/12/1")), linetype = "dashed") +
+        facet_wrap(.~variable, scales = "free", nrow = 4, ncol = 1),
+      ncol = 2, 
+      common.legend = T
+    )
+  }
+
 
 ###############################
 

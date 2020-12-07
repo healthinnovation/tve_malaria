@@ -1,0 +1,1210 @@
+---
+title: "Proyecto: Rolling Malaria"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    fig_width: 12
+    fig_height: 9
+---
+# Descripción del proyecto
+
+Objetivo principal:
+
+- Explorar el desacople de la relación entre el clima y el número de casos 
+reportados de malaria con respecto a las actividades de control realizadas 
+en la región de Loreto, Perú.
+
+Objetivos específicos:
+
+- Determinar el modelo estadístico que mejor permita explorar la relación entre 
+el clima y el número de casos reportados de malaria en la ventana temporal
+del estudio.
+
+- Determinar si el efecto del clima en el número de casos reportados de malaria
+varia en el tiempo según el modelo.
+
+# Carga y validación de datos
+
+Contamos con una tabla de datos con el número de casos reportados de malaria 
+(falciparum y vivax) por mes en cada distrito de la región de Loreto desde de 
+enero de 2000 a diciembre de 2017. Además, para cada uno de
+estos registros se tiene el valor mensual de variables climáticas consideradas
+para el estudio.
+
+Las columnas de la tabla acompañadas de su descripción se muestra continuación:
+
+| Columna       | Descripción                                               |
+|---------------|-----------------------------------------------------------|
+| `district`      | Distrito.                                                 |
+| `year`          | Año.                                                      |
+| `month`         | Mes.                                                      |
+| `falciparum`    | Número de casos de falciparum.                            |
+| `vivax`         | Número de casos de vivax.                                 |
+| `aet`           | Evapotranspiración real.                                  |
+| `prcp`          | Precipitación                                             |
+| `q`             | Escorrentía                                               |
+| `soil`          | Humedad del suelo.                                        |
+| `tmax`          | Temperatura máxima.                                       |
+| `tmin`          | Temperatura mínima                                        |
+| `water_deficit` | Déficit hídrico.                                          |
+| `pop2015`       | Población del distrito en el año 2015.                    |
+| `province`      | Provincia a la que pertenece el distrito.                 |
+| `region`        | Region/Departamento al que pertenece el distrito (Loreto) |
+| `id_district`   | ID del distrito.                                          |
+
+## Carga de los datos
+ 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data_path <- file.path('_data/') # Ruta del directorio de datos
+file_name <- 'dt_final.csv' # Nombre del archivo
+file_path <- file.path(data_path, file_name) # Ruta del archivo
+
+library(tidyverse)
+
+# Nombre de las columnas
+col_names <- c(
+  'district',
+  'year',
+  'month',
+  'falciparum',
+  'vivax',
+  'aet',
+  'prcp',
+  'q',
+  'soilm',
+  'tmax',
+  'tmin',
+  'water_deficit',
+  'loss',
+  'loss_km2',
+  'cum_loss_km2',
+  'diag',
+  'enviro',
+  'nets',
+  'workers',
+  'pamafro',
+  'pop2015',
+  'province',
+  'region',
+  'id_district'
+)
+
+# Tipos de dato de las columnas
+col_types <- readr::cols(
+  district = col_character(),
+  year = col_integer(),
+  month = col_integer(),
+  falciparum = col_integer(),
+  vivax = col_integer(),
+  aet = col_double(),
+  prcp = col_double(),
+  q = col_double(),
+  soilm = col_double(),
+  tmax = col_double(),
+  tmin = col_double(),
+  water_deficit = col_double(),
+  loss = col_double(),
+  loss_km2 = col_double(),
+  cum_loss_km2 = col_double(),
+  diag = col_integer(),
+  enviro = col_integer(),
+  nets = col_integer(),
+  workers = col_integer(),
+  pamafro = col_integer(),
+  pop2015 = col_integer(),
+  province = col_character(),
+  region = col_character(),
+  id_district = col_character()
+)
+
+library(DT)
+
+raw_dataset <- 
+  readr::read_csv(
+    file = file_path,
+    col_names = col_names,
+    col_types = col_types,
+    skip = 1
+  )
+
+DT::datatable(
+  data = raw_dataset,
+  options = 
+    list(
+      pageLength = 6,
+      scrollX = TRUE
+    )
+)
+```
+
+**Creación de la columnas**
+
+Creamos una columna llamada `date` con formato de fecha a partir de las columnas
+`year` y `month`. También añadimos una columna llamada `control` la cual indica 
+las fechas que pertenecen al periodo de octubre de 2005 a setiembre de 2010 en
+el cual se realizaró el programa de control. Por último, agregamos una columna 
+llamada `malaria`, la cual contiene el número total de casos registrados 
+(falciparum + vivax) en cada fecha.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+raw_dataset %>% 
+  dplyr::mutate(
+    date = 
+      lubridate::make_datetime(
+        year = year,
+        month = month,
+        day = 1L
+      ),
+    control = 
+      ifelse(
+        test = (date >= '2005-09-01' & date <= '2010-09-01'),
+        yes = 1,
+        no = 0
+      ),
+    malaria = falciparum + vivax
+  )%>% 
+  dplyr::arrange(date) -> 
+  dataset
+
+DT::datatable(
+  data = dataset,
+  options = 
+    list(
+      pageLength = 6,
+      scrollX = TRUE
+    )
+)
+```
+
+## Validación de campos
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+validation <- list()
+
+dataset %>% 
+  dplyr::select(date) %>% 
+  dplyr::distinct() %>% 
+  dplyr::count() %>% 
+  as.numeric() ->
+  validation[['date']]
+
+dataset %>% 
+  dplyr::select(district) %>% 
+  dplyr::distinct() %>% 
+  dplyr::count() %>% 
+  as.numeric() ->
+  validation[['district']]
+
+cat("Número de meses:", validation[['date']])
+cat("Número de distritos:", validation[['district']])
+```
+
+**Número de distritos por mes**
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(as.character(date)) %>% 
+  dplyr::count() %>% 
+  summary()
+```
+**Número de meses por distritos**
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(district) %>% 
+  dplyr::count() %>% 
+  summary()
+```
+
+# Análisis exploratorio de datos
+
+## Tablas descriptivas 
+
+### Casos reportados de malaria por falciparum {.tabset}
+
+#### Por región
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(region) %>% 
+  dplyr::summarise(
+    n = n(),
+    sum = sum(falciparum),
+    min = min(falciparum),
+    max = max(falciparum),
+    no_report = sum(falciparum < 1),
+    no_report_percent = round(
+      x = 100 * sum(falciparum < 1) / sum(falciparum),
+      digits = 2
+    )
+  ) %>% 
+  DT::datatable(
+    options = 
+    list(
+      scrollX = TRUE
+    )
+  )
+```
+
+#### Por provincia
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(province) %>% 
+  dplyr::summarise(
+    n = n(),
+    sum = sum(falciparum),
+    min = min(falciparum),
+    max = max(falciparum),
+    no_report = sum(falciparum < 1),
+    no_report_percent = round(
+      x = 100 * sum(falciparum < 1) / sum(falciparum),
+      digits = 2
+    )
+  ) %>% 
+  DT::datatable(
+    options = 
+    list(
+      scrollX = TRUE
+    )
+  )
+```
+
+#### Por distrito
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(district) %>% 
+  dplyr::summarise(
+    n = n(),
+    sum = sum(falciparum),
+    min = min(falciparum),
+    max = max(falciparum),
+    no_report = sum(falciparum < 1),
+    no_report_percent = round(
+      x = 100 * sum(falciparum < 1) / sum(falciparum),
+      digits = 2
+    ),
+    pop = mean(pop2015),
+    incidence = 1000 * (sum(falciparum) / (mean(pop2015) * 216))
+  ) %>% 
+  DT::datatable(
+    options = 
+    list(
+      scrollX = TRUE
+    )
+  )
+```
+
+### Casos reportados de malaria por vivax {.tabset}
+
+#### Por región
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(district) %>% 
+  dplyr::summarise(
+    n = n(),
+    sum = sum(vivax),
+    min = min(vivax),
+    max = max(vivax),
+    zero_cases = sum(vivax < 1),
+    zero_cases_percent = round(
+      x = 100 * sum(vivax < 1) / sum(vivax),
+      digits = 2
+    )
+  ) %>% 
+  DT::datatable(
+    options = 
+    list(
+      scrollX = TRUE
+    )
+  )
+```
+
+#### Por provincia
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(province) %>% 
+  dplyr::summarise(
+    n = n(),
+    sum = sum(vivax),
+    min = min(vivax),
+    max = max(vivax),
+    zero_cases = sum(vivax < 1),
+    zero_cases_percent = round(
+      x = 100 * sum(vivax < 1) / sum(vivax),
+      digits = 2
+    )
+  ) %>% 
+  DT::datatable(
+    options = 
+    list(
+      scrollX = TRUE
+    )
+  )
+```
+
+#### Por distrito
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(district) %>% 
+  dplyr::summarise(
+    n = n(),
+    sum = sum(vivax),
+    min = min(vivax),
+    max = max(vivax),
+    zero_cases = sum(vivax < 1),
+    zero_cases_percent = round(
+      x = 100 * sum(vivax < 1) / sum(malaria),
+      digits = 2
+    ),
+    pop = mean(pop2015),
+    incidence = 1000 * (sum(vivax) / (mean(pop2015) * 216))
+  ) %>% 
+  DT::datatable(
+    options = 
+    list(
+      scrollX = TRUE
+    )
+  )
+```
+
+### Casos reportados de malaria (falciparum y vivax) {.tabset}
+
+#### Por región
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(region) %>% 
+  dplyr::summarise(
+    n = n(),
+    sum = sum(malaria),
+    min = min(malaria),
+    max = max(malaria),
+    zero_cases = sum(malaria < 1),
+    zero_cases_percent = round(
+      x = 100 * sum(malaria < 1) / sum(malaria),
+      digits = 2
+    )
+  ) %>% 
+  DT::datatable(
+    options = 
+    list(
+      scrollX = TRUE
+    )
+  )
+```
+
+#### Por provincia
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(province) %>% 
+  dplyr::summarise(
+    n = n(),
+    sum = sum(malaria),
+    min = min(malaria),
+    max = max(malaria),
+    zero_cases = sum(malaria < 1),
+    zero_cases_percent = round(
+      x = 100 * sum(malaria < 1) / sum(malaria),
+      digits = 2
+    )
+  ) %>% 
+  DT::datatable(
+    options = 
+    list(
+      scrollX = TRUE
+    )
+  )
+```
+
+#### Por distrito
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(district) %>% 
+  dplyr::summarise(
+    n = n(),
+    sum = sum(malaria),
+    min = min(malaria),
+    max = max(malaria),
+    zero_cases = sum(malaria < 1),
+    zero_cases_percent = round(
+      x = 100 * sum(malaria < 1) / sum(malaria),
+      digits = 2
+    ),
+    pop = mean(pop2015),
+    incidence = 1000 * (sum(malaria) / (mean(pop2015) * 216))
+  ) %>% 
+  DT::datatable(
+    options = 
+    list(
+      scrollX = TRUE
+    )
+  )
+```
+
+## Número de casos reportados de malaria en el tiempo
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+theme_set(theme_light())
+
+dataset %>% 
+  dplyr::group_by(date) %>% 
+  dplyr::summarise(
+    reported_cases = sum(malaria)
+  ) %>% 
+  ggplot(
+    aes(
+      x = date, 
+      y = reported_cases / 1000
+    )
+  ) +
+  geom_line() +
+  scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '1 year'
+  ) +
+  labs(
+    y = 'Número de casos reportados de malaria (x1000)', 
+    x = NULL
+  ) +
+  ggtitle(
+    label = 'Número de casos mensuales reportados de malaria (x1000) durante los
+    años 2000 a 2017 en Loreto'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(province, date) %>% 
+  dplyr::summarise(
+    reported_cases = sum(malaria)
+  ) %>% 
+  ggplot(
+    aes(
+      x = date, 
+      y = reported_cases
+    )
+  ) +
+  geom_line() +
+  scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '5 year'
+  ) +
+  labs(
+    y = 'Número de casos reportados de malaria (x1000)', 
+    x = NULL
+  ) +
+  facet_wrap(
+    facets = . ~ province,
+    scales = 'free'
+  ) +
+  ggtitle(
+    label = 'Número de casos mensuales reportados de malaria (x1000) durante los
+    años 2000 a 2017 por provincias en Loreto'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  ggplot(
+    aes(
+      x = date, 
+      y = malaria / 1000
+    )
+  ) +
+  geom_line() +
+  scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '5 year'
+  ) +
+  labs(
+    y = 'Número de casos reportados de malaria (x1000)', 
+    x = NULL
+  ) +
+  facet_wrap(
+    facets = .~district,
+    scales = 'free'
+  ) +
+  ggtitle(
+    label = 'Número de casos mensuales reportados de malaria (x1000) durante los
+    años 2000 a 2017 por distritos en Loreto'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Número de casos reportados de malaria por parásito en el tiempo
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(date) %>% 
+  dplyr::summarise(
+    falciparum = sum(falciparum),
+    vivax = sum(vivax)
+  ) %>% 
+  tidyr::pivot_longer(
+    cols = c(falciparum, vivax),
+    names_to = 'parasite'
+  ) %>% 
+  ggplot(aes(x = date, y = value)) +
+  geom_line(
+    aes(
+      colour = parasite
+    ),
+    alpha = 0.25,
+    size = 1,
+    position = position_dodge(width = 0.8)
+  ) +
+  scale_color_manual(
+    values = c("#00AFBB", "#E7B800")
+  ) +
+  scale_fill_manual(
+    values = c("#00AFBB", "#E7B800")
+  ) +
+  scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '1 year'
+  ) +
+  labs(
+    y = 'Número de casos reportados de malaria (x1000)', 
+    x = NULL
+  ) +
+  ggtitle(
+    label = 'Número de casos mensuales reportados de malaria (x1000) por parásito
+    durante los años 2000 a 2017 en Loreto'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(province, date) %>% 
+  dplyr::summarise(
+    falciparum = sum(falciparum),
+    vivax = sum(vivax)
+  ) %>% 
+  tidyr::pivot_longer(
+    cols = c(falciparum, vivax),
+    names_to = 'parasite'
+  ) %>% 
+  ggplot(aes(x = date, y = value)) +
+  geom_line(
+    aes(
+      colour = parasite
+    ),
+    alpha = 0.25,
+    size = 1,
+    position = position_dodge(width = 0.8)
+  ) +
+  scale_color_manual(
+    values = c("#00AFBB", "#E7B800")
+  ) +
+  scale_fill_manual(
+    values = c("#00AFBB", "#E7B800")
+  ) +
+  scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '5 year'
+  ) +
+  labs(
+    y = 'Número de casos reportados de malaria (x1000)', 
+    x = NULL
+  ) +
+  facet_wrap(
+    facets = . ~ province,
+    scales = 'free'
+  ) +
+  ggtitle(
+    label = 'Número de casos mensuales reportados de malaria (x1000) por parásito
+    durante los años 2000 a 2017 por provincias en Loreto'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(district, date) %>% 
+  dplyr::summarise(
+    falciparum = sum(falciparum),
+    vivax = sum(vivax)
+  ) %>% 
+  tidyr::pivot_longer(
+    cols = c(falciparum, vivax),
+    names_to = 'parasite'
+  ) %>% 
+  ggplot(aes(x = date, y = value)) +
+  geom_line(
+    aes(
+      colour = parasite
+    ),
+    alpha = 0.25,
+    size = 1,
+    position = position_dodge(width = 0.8)
+  ) +
+  scale_color_manual(
+    values = c("#00AFBB", "#E7B800")
+  ) +
+  scale_fill_manual(
+    values = c("#00AFBB", "#E7B800")
+  ) +
+  scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '5 year'
+  ) +
+  labs(
+    y = 'Número de casos reportados de malaria (x1000)', 
+    x = NULL
+  ) +
+  facet_wrap(
+    facets = . ~ district,
+    scales = 'free'
+  ) +
+  ggtitle(
+    label = 'Número de casos mensuales reportados de malaria (x1000) por parásito
+    durante los años 2000 a 2017 por distritos en Loreto'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Análisis de la estacionalidad del número de casos reportados de malaria en
+Loreto
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(forecast)
+
+dataset %>% 
+  dplyr::group_by(date) %>% 
+  dplyr::summarise(
+    reported_cases = sum(malaria) 
+  ) %>% 
+  dplyr::select(reported_cases) %>% 
+  ts(
+    start = 2000,
+    frequency = 12
+  ) %>% 
+  forecast::ggseasonplot(
+    polar = TRUE
+    ) +
+  ggtitle(
+    label = 'Polar seasonal plot: \n Número de casos reportados de malaria durante
+    los años 2000 a 2017 en Loreto'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(date) %>% 
+  dplyr::summarise(
+    reported_cases = sum(malaria) 
+  ) %>% 
+  dplyr::select(reported_cases) %>% 
+  ts(
+    start = 2000,
+    frequency = 12
+  ) %>% 
+  forecast::ggsubseriesplot(
+    polar = TRUE
+  ) +
+  ggtitle(
+    label = 'Seasonal subseries plot: \n Número de casos reportados de malaria durante
+    los años 2000 a 2017 en Loreto'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+# Modelamiento del número de casos reportados de malaria: Caso del distrito de Alto Tapiche
+
+## Número de casos mensuales reportados de malaria 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::filter(
+    district == 'ALTO TAPICHE'
+  ) %>% 
+  ggplot(
+    aes(
+      x = date,
+      y = malaria
+    )
+  ) +
+  geom_line() +
+  scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '1 year'
+  ) +
+  labs(
+    y = 'Número de casos reportados de malaria', 
+    x = NULL
+  ) +
+  geom_point(
+    data = 
+      dplyr::filter(
+        dataset,
+        district == 'ALTO TAPICHE',
+        malaria == 0
+      ),
+    aes(
+      x = date,
+      y = malaria
+    ),
+    colour = 'red'
+  ) +
+  ggtitle(
+    label = 'Número de casos mensuales reportados de malaria durante los años 
+    2000 a 2017 en el distrito de Alto Tapiche'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::filter(
+    district == 'ALTO TAPICHE'
+  ) %>% 
+  ggplot(
+    aes(x = malaria)
+  ) +
+  geom_histogram(
+    bins = 50,
+    color = 'black',
+    fill = 'white'
+  ) +
+  ggtitle(
+    label = 'Histograma del número de casos mensuales reportados de malaria 
+    durante los años 2000 a 2017 en el distrito de Alto Tapiche'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+### Análisis de autocorrelación
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>%
+  dplyr::filter(
+    district == 'ALTO TAPICHE',
+    malaria > 0
+  ) %>% 
+  dplyr::select(
+    malaria
+  ) %>% 
+  ts(
+    start = 2000,
+    frequency = 12
+  ) %>%
+  ggAcf(
+    lag.max = 15
+  ) +
+  ggtitle(
+    label = 'Gráfico de autocorrelación del número de casos mensuales reportados 
+    de malaria durante los años 2000 a 2017 en el distrito de Alto Tapiche'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>%
+  dplyr::filter(
+    district == 'ALTO TAPICHE',
+    malaria > 0
+  ) %>% 
+  dplyr::select(
+    malaria
+  ) %>% 
+  stats::ts(
+    start = 2000,
+    frequency = 12
+  ) %>% 
+  forecast::ggPacf(
+    lag.max = 15
+  ) +
+  ggtitle(
+    label = 'Gráfico de autocorrelación parcialdel número de casos mensuales 
+    reportados de malaria durante los años 2000 a 2017 
+    en el distrito de Alto Tapiche'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>%
+  dplyr::filter(
+    district == 'ALTO TAPICHE',
+    malaria > 0
+  ) %>% 
+  dplyr::select(
+    malaria
+  ) %>% 
+  stats::ts(
+    start = 2000,
+    frequency = 12
+  ) %>% 
+  forecast::gglagplot(
+    lag.max = 15
+  ) +
+  ggtitle(
+    label = 'Gráfico de dispersión de lags del número de casos mensuales 
+    reportados de malaria durantes los años 2000 a 2017 
+    en el distrito de Alto Tapiche'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+#### Prueba de Ljung-Box 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::filter(
+    district == 'ALTO TAPICHE',
+    malaria > 0
+  ) %>%
+  dplyr::select(
+    malaria
+  ) %>% 
+  stats::ts() %>% 
+  stats::Box.test(
+    type = 'Ljung-Box'
+  )
+```
+
+### Análisis de correlación
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::filter(
+    district == 'ALTO TAPICHE'
+  ) %>% 
+  dplyr::select(
+    aet,
+    prcp,
+    soilm,
+    tmax,
+    tmin,
+    malaria
+  ) %>% 
+  summary()
+```
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::filter(district == 'ALTO TAPICHE') %>%  
+  dplyr::select(
+    date,
+    aet,
+    prcp,
+    soilm,
+    tmax,
+    tmin,
+    malaria
+  ) %>% 
+  tidyr::pivot_longer(
+    cols = c(
+      aet,
+      prcp,
+      soilm,
+      tmax,
+      tmin,
+      malaria
+    ),
+    names_to = 'variable'
+  ) %>% 
+  ggplot(
+    aes(
+      x = date,
+      y = value
+    )
+  ) +
+  geom_line() +
+  scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '1 year'
+  ) +
+  facet_grid(
+    facets = variable ~ .,
+    scales = 'free'
+  ) + 
+  ggtitle(
+    label = 'Número de casos reportados y valores de variables climáticas mensuales
+    durante los años 2005 a 2017 en el distrito de Alto Tapiche'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(
+    y = NULL, 
+    x = NULL
+  )
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(GGally)
+
+dataset %>% 
+  dplyr::filter(
+    district == 'ALTO TAPICHE',
+    malaria > 0
+  ) %>%  
+  dplyr::select(
+    aet,
+    prcp,
+    soilm,
+    tmax,
+    tmin,
+    malaria
+  ) %>% 
+  GGally::ggpairs() + 
+  ggtitle(
+    label = 'Matriz de correlación del número de casos reportados y valores de 
+    variables climáticas mensuales durante los años 2005 a 2017 
+    el distrito de Alto Tapiche'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::filter(district == 'ALTO TAPICHE') %>% 
+  ggplot(
+    aes(
+      x = aet, 
+      y = malaria
+    )
+  ) +
+  geom_point() +
+  geom_smooth(
+    method = 'loess'
+  ) +
+  labs(
+    x = 'Evapotranspiración real',
+    y = 'Número de casos reportados de malaria'
+  ) + 
+  ggtitle(
+    label = 'Gráfico de dispersión del número de casos reportados de malaria y 
+    los valores de evapotranspiración mensuales durante los años 2000 y 2017 
+    en el distrito de Alto Tapiche'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::filter(district == 'ALTO TAPICHE') %>% 
+  ggplot(
+    aes(
+      x = tmax, 
+      y = malaria
+    )
+  ) +
+  geom_point() +
+  geom_smooth(
+    method = 'loess'
+  ) +
+  labs(
+    x = 'Temperatura máxima',
+    y = 'Número de casos reportados de malaria'
+  ) + 
+  ggtitle(
+    label = 'Gráfico de dispersión del número de casos reportados de malaria y 
+    los valores de temperatura máxima mensuales durante los años 2000 y 2017 
+    en el distrito de Alto Tapiche'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(TTR)
+library(tidyquant)
+
+dataset %>% 
+  dplyr::filter(
+    district == 'ALTO TAPICHE',
+    malaria > 0
+  ) %>%  
+  dplyr::select(
+    date,
+    malaria,
+    aet
+  ) %>% 
+  tidyquant::tq_mutate_xy(
+    x = aet,
+    y = malaria,
+    mutate_fun = runCor,
+    n = 12,
+    col_rename = 'roll_corr'
+  ) %>% 
+  ggplot(
+    aes(
+      x = date,
+      y = roll_corr
+    )
+  ) +
+  geom_line() +
+  scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '1 year'
+  ) +
+  geom_hline(
+    aes(
+      yintercept = stats::cor(
+        x = aet,
+        y = malaria
+      )
+    ),
+    colour = 'red'
+  ) + 
+  ggtitle(
+    label = 'Correlación rolling del número de casos reportados de malaria y 
+    los valores de evapotranspiración mensuales durante los años 2000 y 2017 
+    en el distrito de Alto Tapiche 
+    (ventana = 12 meses)'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(
+    y = 'Correlación', 
+    x = NULL
+  )
+```
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::filter(
+    district == 'ALTO TAPICHE',
+    malaria > 0
+  ) %>%  
+  dplyr::select(
+    date,
+    malaria,
+    tmax
+  ) %>% 
+  tidyquant::tq_mutate_xy(
+    x = tmax,
+    y = malaria,
+    mutate_fun = runCor,
+    n = 12,
+    col_rename = 'roll_corr'
+  ) %>% 
+  ggplot(
+    aes(
+      x = date,
+      y = roll_corr
+    )
+  ) +
+  geom_line() +
+  scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '1 year'
+  ) +
+  geom_hline(
+    aes(
+      yintercept = stats::cor(
+        x = tmax,
+        y = malaria
+      )
+    ),
+    colour = 'red'
+  ) + 
+  ggtitle(
+    label = 'Correlación rolling del número de casos reportados de malaria y 
+    los valores de la temperatura máxima mensuales durante los años 2000 y 2017 
+    en el distrito de Alto Tapiche 
+    (ventana = 12 meses)'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(
+    y = 'Correlación', 
+    x = NULL
+  )
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+forecast::ggCcf(
+  x = ts(
+    dplyr::filter(
+      dataset,
+      malaria > 0,
+      district == 'ALTO TAPICHE'
+    )$aet
+  ),
+  y = ts(
+    dplyr::filter(
+      dataset,
+      malaria > 0,
+      district == 'ALTO TAPICHE'
+    )$malaria
+  )
+) +
+  ggtitle(
+    label = 'Gráfico de correlación cruzada del número de casos reportados de malaria y 
+    los valores de evapotranspiración mensuales durante los años 2000 y 2017 
+    en el distrito de Alto Tapiche'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+forecast::ggCcf(
+  x = ts(
+    dplyr::filter(
+      dataset,
+      malaria > 0,
+      district == 'ALTO TAPICHE'
+    )$tmax
+  ),
+  y = ts(
+    dplyr::filter(
+      dataset,
+      malaria > 0,
+      district == 'ALTO TAPICHE'
+    )$malaria
+  )
+) +
+  ggtitle(
+    label = 'Gráfico de correlación cruzada del número de casos reportados de malaria y 
+    los valores de la temperatura máxima mensuales durante los años 2000 y 2017 
+    en el distrito de Alto Tapiche'
+  ) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+#### Matriz de correlación del número de casos reportados de malaria y lags (n = 15) de los valores de
+evapotranspiración mensuales durante los años 2000 y 2017 en el distrito de Alto Tapiche
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+library(astsa)
+
+dplyr::filter(
+  dataset,
+  district == 'ALTO TAPICHE',
+  malaria > 0
+)$malaria %>% 
+  ts() -> malaria
+ 
+dplyr::filter(
+  dataset,
+  district == 'ALTO TAPICHE',
+  malaria > 0
+)$aet %>% 
+  ts() -> aet
+
+dplyr::filter(
+  dataset,
+  district == 'ALTO TAPICHE',
+  malaria > 0
+)$tmax %>% 
+  ts() -> tmax
+
+astsa::lag2.plot(
+  series1 = aet,
+  series2 = malaria,
+  max.lag = 15,
+) 
+```
+#### Matriz de correlación del número de casos reportados de malaria y lags (n = 15) de los valores de
+la temperatura máxima mensuales durante los años 2000 y 2017 en el distrito de Alto Tapiche
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+astsa::lag2.plot(
+  series1 = tmax,
+  series2 = malaria,
+  max.lag = 15
+)
+```
+
+
+
+
+
+
+
+
+

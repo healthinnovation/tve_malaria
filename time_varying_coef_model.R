@@ -77,8 +77,7 @@ raw_dataset %>%
         year = year,
         month = month,
         day = 1L
-      ),
-    malaria = falciparum + vivax
+      )
   ) %>% 
   dplyr::mutate(
     control = 
@@ -220,7 +219,11 @@ nb_full_model <- MASS::glm.nb(
 
 summary(poisson_full_model)
 summary(qpoisson_full_model)
-summary(ng_full_model)
+summary(nb_full_model)
+
+colnames(stats::confint(nb_full_model))
+
+stats::confint(nb_full_model)[,1]
 
 nb_model <- MASS::glm.nb(
   formula = vivax ~ tmax,

@@ -506,6 +506,13 @@
       "Repository": "CRAN",
       "Hash": "ba8048a1641465f807c52b78d1eae18a"
     },
+    "gamm4": {
+      "Package": "gamm4",
+      "Version": "0.2-6",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "07fd04f71ff5fbf2a69c74e4ec128d65"
+    },
     "gclus": {
       "Package": "gclus",
       "Version": "1.3.2",
@@ -736,6 +743,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "d908914ae53b04d4c0c0fd72ecc35370"
+    },
+    "leaps": {
+      "Package": "leaps",
+      "Version": "3.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "e7023edcf59fd695d92eb01a7f37f991"
     },
     "lifecycle": {
       "Package": "lifecycle",
@@ -1269,6 +1283,18 @@
       "Repository": "CRAN",
       "Hash": "71dffd8544691c520dd8e41ed2d7e070"
     },
+    "tictoc": {
+      "Package": "tictoc",
+      "Version": "1.0",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "tictoc",
+      "RemoteUsername": "collectivemedia",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "211fe594ed7342adde51b9ec0738c26178461c1a",
+      "Hash": "17c3d1b49b6d63b4ec79fc14bccb467a"
+    },
     "tidyquant": {
       "Package": "tidyquant",
       "Version": "1.0.2",
@@ -1341,10 +1367,10 @@
     },
     "vctrs": {
       "Package": "vctrs",
-      "Version": "0.3.4",
+      "Version": "0.3.6",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "0bc90078aeee42f2520b1d0a33bd6758"
+      "Hash": "5cf1957f93076c19fdc81d01409d240b"
     },
     "viridis": {
       "Package": "viridis",

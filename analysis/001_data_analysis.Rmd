@@ -1,0 +1,936 @@
+---
+title: "Modelling of the count of reported cases of Malaria in Loreto"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    fig_width: 12
+    fig_height: 10
+    code_folding: hide
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r message=FALSE, warning=FALSE}
+library(readr, warn.conflicts = FALSE)
+library(dplyr, warn.conflicts = FALSE)
+library(lubridate, warn.conflicts = FALSE)
+library(dplyr, warn.conflicts = FALSE)
+library(lme4, warn.conflicts = FALSE)
+library(slider, warn.conflicts = FALSE)
+library(gamm4, warn.conflicts = FALSE)
+library(ggplot2, warn.conflicts = FALSE)
+library(tictoc)
+```
+
+# Data loading 
+
+## File path 
+
+```{r message=FALSE, warning=FALSE}
+data_path <- file.path('../data/') # Data directory path
+file_name <- 'dt_final.csv' # csv. file name 
+file_path <- file.path(data_path, file_name) # File path
+```
+
+## Formating columns 
+
+```{r message=FALSE, warning=FALSE}
+# Column names
+col_names <- c(
+  "district",
+  "year",
+  "month",
+  "falciparum",
+  "vivax",
+  "aet",
+  "prcp",
+  "q",
+  "soilm",
+  "tmax",
+  "tmin",
+  "water_deficit",
+  "loss",
+  "loss_km2",
+  "cum_loss_km2",
+  "diag",
+  "enviro",
+  "nets",
+  "workers",
+  "pamafro",
+  "pop2015",
+  "province",
+  "region",
+  "id_district"
+)
+
+# Column types
+col_types <- 
+  readr::cols(
+    district      = col_character(),
+    year          = col_integer(),
+    month         = col_integer(),
+    falciparum    = col_integer(),
+    vivax         = col_integer(),
+    aet           = col_double(),
+    prcp          = col_double(),
+    q             = col_double(),
+    soilm         = col_double(),
+    tmax          = col_double(),
+    tmin          = col_double(),
+    water_deficit = col_double(),
+    loss          = col_double(),
+    loss_km2      = col_double(),
+    cum_loss_km2  = col_double(),
+    diag          = col_integer(),
+    enviro        = col_integer(),
+    nets          = col_integer(),
+    workers       = col_integer(),
+    pamafro       = col_integer(),
+    pop2015       = col_integer(),
+    province      = col_character(),
+    region        = col_character(),
+    id_district   = col_character()
+  )
+```
+
+## Loading data 
+
+```{r message=FALSE, warning=FALSE}
+raw_dataset <- 
+  readr::read_csv(
+    file      = file_path,
+    col_names = col_names,
+    col_types = col_types,
+    skip      = 1,
+    locale    = readr::locale(encoding = "utf-8")
+  )
+```
+
+## Data validation 
+
+Checking data structure.
+
+```{r message=FALSE, warning=FALSE}
+str(raw_dataset)
+```
+
+Checking for missing values.
+
+```{r message=FALSE, warning=FALSE}
+cat("Percentage of missing values:\n")
+
+for (col in names(raw_dataset)) {
+  cat(
+    "-",
+    col, 
+    paste(
+      sum(is.na(raw_dataset[col])) / dim(raw_dataset)[1], 
+      "%", 
+      sep = ""
+     ),
+    "\n"
+  )
+}
+```
+
+Checking categorical features.
+
+```{r message=FALSE, warning=FALSE}
+cate_features <- c()
+
+for (col in names(raw_dataset)) {
+  if (is.character(raw_dataset[[col]])) {
+    cate_features <- c(cate_features, col)
+  }
+}
+
+cat("Number of different categories:\n")
+
+for (col in cate_features) {
+  cat(
+    "-",
+    col, 
+    length(unique(raw_dataset[[col]])), 
+    "\n"
+  )
+}
+```
+
+Checking numerical features.
+
+```{r message=FALSE, warning=FALSE}
+num_features <- setdiff(names(raw_dataset), cate_features)
+
+summary(raw_dataset[num_features])
+```
+
+# Data preprocessing 
+
+Create a reporting date features in datetime format using `year` and `month` columns.
+
+```{r message=FALSE, warning=FALSE}
+dataset <- 
+  raw_dataset %>% 
+    dplyr::mutate(
+      reporting_date = 
+        lubridate::make_datetime(
+          year  = year,
+          month = month,
+          day   = 1L
+        ) 
+    )
+
+dataset <- 
+  dataset %>% 
+  dplyr::arrange(reporting_date)
+```
+
+# Exploratory data analysis
+
+# Model building
+
+## Data wrangling
+
+### Feature encoding
+
+Create a new features for modeling:
+- `reporting_time`: encode `reporting_date` values into integers.
+- `distric_encoded`: encode `district` categories into integers.
+- `province_encoded`: encode `province` categories into integers.
+
+```{r message=FALSE, warning=FALSE}
+dataset <- 
+  dataset %>% 
+    dplyr::mutate(
+      reporting_time = 
+        as.numeric(
+          factor(
+            x      = reporting_date, 
+            labels = c(as.character(seq(1, 216)))
+          )
+        ),
+      district_encoded = 
+        as.numeric(
+          factor(
+            x      = district, 
+            labels = c(as.character(seq(1, 49)))
+          )
+        ),
+      province_encoded = 
+        as.numeric(
+          factor(
+            x      = province, 
+            labels = c(as.character(seq(1, 8)))
+          )
+        )
+    )
+```
+
+### Feature scaling
+
+```{r message=FALSE, warning=FALSE}
+cont_features <- 
+  c(
+    "aet",
+    "prcp",
+    "q",
+    "soilm",
+    "tmax",
+    "tmin"
+  )
+
+mc_cont_features <- 
+  c(
+    "aet_mc",
+    "prcp_mc",
+    "q_mc",
+    "soilm_mc",
+    "tmax_mc",
+    "tmin_mc"
+  )
+
+dataset[, mc_cont_features] <- 
+  scale(
+    x = dataset[, cont_features], 
+    scale = FALSE
+  )
+
+std_cont_features <- 
+  c(
+    "aet_std",
+    "prcp_std",
+    "q_std",
+    "soilm_std",
+    "tmax_std",
+    "tmin_std"
+  )
+
+dataset[, std_cont_features] <- 
+  scale(
+    x = dataset[, cont_features], 
+    scale = TRUE
+  )
+```
+
+## Generalized linear model with random effects
+
+### Vivax
+
+We start with a model with a nested random effect of provinces and district.
+
+```{r}
+vivax_glm_nb_re_01 <- 
+  lme4::glmer.nb(
+    formula = vivax ~ offset(log(pop2015)) + (1 | province/district),
+    data    = dataset
+  )
+
+summary(vivax_glm_nb_re_01)
+```
+
+Then, we add a time random effect to account for the dependency of the observations in the dates the measurements were reported.
+
+```{r}
+vivax_glm_nb_re_02 <- 
+  lme4::glmer.nb(
+    formula = 
+      vivax ~ 
+      offset(log(pop2015)) + 
+      (1 | reporting_time) + 
+      (1 | province/district),
+    data    = dataset
+  )
+
+summary(vivax_glm_nb_re_02)
+```
+
+Another option is adding a nested year-month random effect.
+
+```{r}
+vivax_glm_nb_re_03 <- 
+  lme4::glmer.nb(
+    formula = 
+      vivax ~ 
+      offset(log(pop2015)) +
+      (1 | year/month) + 
+      (1 | province/district),
+    data    = dataset
+  )
+
+summary(vivax_glm_nb_re_03)
+```
+
+A likelihood ratio test is performed to see which configuration fits the model better.
+
+```{r}
+anova(
+  vivax_glm_nb_re_01,
+  vivax_glm_nb_re_02
+)
+```
+
+```{r}
+anova(
+  vivax_glm_nb_re_01,
+  vivax_glm_nb_re_03
+)
+```
+
+Both random effects for modeling the dependence of observations over time are significant, but the second one offers a better fit according to the AIC, BIC and the log-likelihood. Therefore, this model will serve as a base to out model building approach.
+
+```{r}
+vivax_glm_nb_base <- vivax_glm_nb_re_03 # Base model (without predictors)
+```
+
+We are going to take a step-wise forward predictor selection approach to build the model. At each step, we are going to add the predictors one by one, starting with the base model with the random effects only. The "best" model in each step is going to be the model with the lowest AIC and where all the fixed effects of the predictors are significant. This best model is going to serve as the base model for the following step. When no further additions improve the AIC o neither of them is significant, the selection is finished and we keep the last best model for further analysis.
+
+#### First step: adding single predictors to the base model
+
+- `aet`: actual evapotranspiration
+
+```{r}
+vivax_glm_nb_aet <- update(
+  vivax_glm_nb_base,
+  vivax ~ . + aet
+)
+
+summary(vivax_glm_nb_aet)
+```
+
+- `prcp`: precipitation
+
+```{r}
+vivax_glm_nb_prcp <- update(
+  vivax_glm_nb_base,
+  vivax ~ . + prcp
+)
+
+summary(vivax_glm_nb_prcp)
+```
+
+Model failed to converge. The output recommend us to rescale the variable. We first try with mean centering scaling.
+
+```{r}
+vivax_glm_nb_prcp <- update(
+  vivax_glm_nb_base,
+  vivax ~ . + prcp_mc
+)
+
+summary(vivax_glm_nb_prcp)
+```
+
+Model failed to converge again. We now try with feature standardization.
+
+```{r}
+vivax_glm_nb_prcp <- update(
+  vivax_glm_nb_base,
+  vivax ~ . + prcp_std
+)
+
+summary(vivax_glm_nb_prcp)
+```
+
+The model converged correctly with feature standardization. From now on, we are going to use this feature scaling method to build the models.
+
+Refitting the first model with the rescaled version of `aet`:
+
+```{r}
+vivax_glm_nb_aet <- update(
+  vivax_glm_nb_base,
+  vivax ~ . + aet_std
+)
+
+summary(vivax_glm_nb_aet)
+```
+
+- `q`: runoff
+
+```{r}
+vivax_glm_nb_q <- update(
+  vivax_glm_nb_base,
+  vivax ~ . + q_std
+)
+
+summary(vivax_glm_nb_q)
+```
+
+- `soilm`: soil moisture
+
+```{r}
+vivax_glm_nb_soilm <- update(
+  vivax_glm_nb_base,
+  vivax ~ . + soilm_std
+)
+
+summary(vivax_glm_nb_soilm)
+```
+
+- `tmax`: maximum temperature
+
+```{r}
+vivax_glm_nb_tmax <- update(
+  vivax_glm_nb_base,
+  vivax ~ . + tmax_std
+)
+
+summary(vivax_glm_nb_tmax)
+```
+
+- `tmin`: minimum temperature
+
+```{r}
+vivax_glm_nb_tmin <- update(
+  vivax_glm_nb_base,
+  vivax ~ . + tmin_std
+)
+
+summary(vivax_glm_nb_tmin)
+```
+
+Summary
+
+```{r}
+AIC(
+  vivax_glm_nb_base, 
+  vivax_glm_nb_aet,
+  vivax_glm_nb_prcp, 
+  vivax_glm_nb_q,
+  vivax_glm_nb_soilm,
+  vivax_glm_nb_tmax,
+  vivax_glm_nb_tmin
+)
+```
+
+#### Second step: adding single predictors to the model with precipitation
+
+- `prcp` and `aet`
+
+```{r}
+vivax_glm_nb_21 <- update(
+  vivax_glm_nb_prcp,
+  vivax ~ . + aet_std
+)
+
+summary(vivax_glm_nb_21)
+```
+
+```{r}
+anova(
+  vivax_glm_nb_base,
+  vivax_glm_nb_21
+)
+```
+
+- `prcp` and `q`
+
+```{r}
+vivax_glm_nb_23 <- update(
+  vivax_glm_nb_prcp,
+  vivax ~ . + q_std
+)
+
+summary(vivax_glm_nb_23)
+```
+
+```{r}
+anova(
+  vivax_glm_nb_base, vivax_glm_nb_23
+)
+```
+
+Runoff effect appear to be non-significant. However, recall that precipitation and runoff are highly correlated (r = 0.99), so this is a problem of multicollinearity.
+
+- `prcp` and `soilm`
+
+```{r}
+vivax_glm_nb_24 <- update(
+  vivax_glm_nb_prcp,
+  vivax ~ . + soilm_std
+)
+
+summary(vivax_glm_nb_24)
+```
+
+```{r}
+anova(
+  vivax_glm_nb_base, 
+  vivax_glm_nb_24
+)
+```
+
+- `prcp` and `tmax`
+
+```{r}
+vivax_glm_nb_25 <- update(
+  vivax_glm_nb_prcp,
+  vivax ~ . + tmax_std
+)
+
+summary(vivax_glm_nb_25)
+```
+
+```{r}
+anova(
+  vivax_glm_nb_base, 
+  vivax_glm_nb_25
+)
+```
+
+- `prcp` and `tmin`
+
+```{r}
+vivax_glm_nb_26 <- update(
+  vivax_glm_nb_prcp,
+  vivax ~ . + tmin_std
+)
+
+summary(vivax_glm_nb_26)
+```
+
+```{r}
+anova(
+  vivax_glm_nb_base, 
+  vivax_glm_nb_26
+)
+```
+
+Summary
+
+```{r}
+AIC(
+  vivax_glm_nb_base, 
+  vivax_glm_nb_aet,
+  vivax_glm_nb_prcp, 
+  vivax_glm_nb_q,
+  vivax_glm_nb_soilm,
+  vivax_glm_nb_tmax,
+  vivax_glm_nb_tmin,
+  vivax_glm_nb_21,
+  vivax_glm_nb_23,
+  vivax_glm_nb_24,
+  vivax_glm_nb_25,
+  vivax_glm_nb_26
+)
+```
+
+#### Third step: adding single predictors to the model with precipitation and maximum temperature
+
+- `prcp`, `tmax` and `aet`
+
+```{r}
+vivax_glm_nb_251 <- update(
+  vivax_glm_nb_25,
+  vivax ~ . + aet_std
+)
+
+summary(vivax_glm_nb_251)
+```
+
+```{r}
+anova(
+  vivax_glm_nb_base, 
+  vivax_glm_nb_251
+)
+```
+
+- `prcp`, `tmax` and `soilm`
+
+```{r}
+vivax_glm_nb_254 <- update(
+  vivax_glm_nb_25,
+  vivax ~ . + soilm_std
+)
+
+summary(vivax_glm_nb_254)
+```
+
+```{r}
+anova(
+  vivax_glm_nb_base, 
+  vivax_glm_nb_254
+)
+```
+
+- `prcp`, `tmax` and `tmin`
+
+```{r}
+vivax_glm_nb_256 <- update(
+  vivax_glm_nb_25,
+  vivax ~ . + tmin_std
+)
+
+summary(vivax_glm_nb_256)
+```
+
+```{r}
+anova(
+  vivax_glm_nb_base, 
+  vivax_glm_nb_256
+)
+```
+
+Summary
+
+```{r}
+AIC(
+  vivax_glm_nb_base, 
+  vivax_glm_nb_aet,
+  vivax_glm_nb_prcp, 
+  vivax_glm_nb_q,
+  vivax_glm_nb_soilm,
+  vivax_glm_nb_tmax,
+  vivax_glm_nb_tmin,
+  vivax_glm_nb_21,
+  vivax_glm_nb_23,
+  vivax_glm_nb_24,
+  vivax_glm_nb_25,
+  vivax_glm_nb_26,
+  vivax_glm_nb_251,
+  vivax_glm_nb_254,
+  vivax_glm_nb_256
+)
+```
+Adding `aet` to the model with `prcp` and `tmax` (best one so far) slightly improves the fit, but the main effect of `aet` is not significant. 
+
+```{r}
+sqrt(diag(vcov(vivax_glm_nb_25)))
+```
+
+## Rolling analysis
+
+```{r message=FALSE, warning=FALSE}
+ggplot2::theme_set(theme_light())
+
+df_intervention_period <- 
+  dplyr::tibble(
+    dates = c(
+      lubridate::make_datetime(
+        year = 2005,
+        month = 10,
+        day = 1L
+      ),
+      lubridate::make_datetime(
+        year = 2010,
+        month = 09,
+        day = 1L
+      )
+    ),
+    type = c(
+      'start',
+      'end'
+    )
+  )
+```
+
+
+```{r message=FALSE, warning=FALSE}
+vivax_rolling_glmer <- function(data) {
+  model <- update(
+    vivax_glm_nb_re_01,
+    vivax ~ . + prcp_std + tmax_std,
+    data    = data
+  )
+  
+  fit <- lme4::fixef(model)[2:3]
+  fit_se <- sqrt(diag(vcov(model)))[2:3]
+  names(fit_se) <- names(fit)
+  
+  df <- tibble::tibble(
+    reporting_date = max(data$reporting_date),
+    predictor      = names(fit),
+    fit            = fit,
+    fit_se         = fit_se
+  )
+  return(df)
+}
+```
+
+### 6 month window
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("Rolling regression")
+vivax_rolling_glm_nb_6 <- slider::slide_period_dfr(
+  .x        = dataset,
+  .i        = dataset$reporting_date,
+  .period   = 'month',
+  .f        = vivax_rolling_glmer,
+  .every    = 1,
+  .before   = 5,
+  .complete = TRUE
+)
+tictoc::toc()
+```
+
+```{r message=FALSE, warning=FALSE}
+vivax_rolling_glm_nb_6 %>% 
+  ggplot2::ggplot(
+    aes(x = reporting_date, y = fit)
+  ) + 
+  ggplot2::geom_line(aes(y = fit)) +
+  ggplot2::geom_ribbon(
+    aes(
+      ymin = fit - 2 * fit_se,
+      ymax = fit + 2 * fit_se
+    ),
+    fill  = "grey70",
+    alpha = 0.8
+  ) +
+  ggplot2::scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '1 year'
+  ) +
+  ggplot2::geom_vline(
+    aes(xintercept = as.numeric(dates)),
+    data     = df_intervention_period,
+    linetype = "dashed",
+    colour   = "red"
+  ) +
+  ggplot2::geom_hline(
+    aes(yintercept = 0),
+    linetype = 'dashed',
+    alpha    = 0.6
+  ) +
+  ggplot2::labs(
+    y = NULL, 
+    x = NULL
+  ) +
+  ggplot2::facet_wrap(
+    ncol   = 1,
+    facets = . ~ predictor
+  )
+```
+
+### 12 month window
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("Rolling regression")
+vivax_rolling_glm_nb_12 <- slider::slide_period_dfr(
+  .x        = dataset,
+  .i        = dataset$reporting_date,
+  .period   = 'month',
+  .f        = vivax_rolling_glmer,
+  .every    = 1,
+  .before   = 11,
+  .complete = TRUE
+)
+tictoc::toc()
+```
+```{r message=FALSE, warning=FALSE}
+vivax_rolling_glm_nb_12 %>% 
+  ggplot2::ggplot(
+    aes(x = reporting_date, y = fit)
+  ) + 
+  ggplot2::geom_line(aes(y = fit)) +
+  ggplot2::geom_ribbon(
+    aes(
+      ymin = fit - 2 * fit_se,
+      ymax = fit + 2 * fit_se
+    ),
+    fill  = "grey70",
+    alpha = 0.8
+  ) +
+  ggplot2::scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '1 year'
+  ) +
+  ggplot2::geom_vline(
+    aes(xintercept = as.numeric(dates)),
+    data     = df_intervention_period,
+    linetype = "dashed",
+    colour   = "red"
+  ) +
+  ggplot2::geom_hline(
+    aes(yintercept = 0),
+    linetype = 'dashed',
+    alpha    = 0.6
+  ) +
+  ggplot2::labs(
+    y = NULL, 
+    x = NULL
+  ) +
+  ggplot2::facet_wrap(
+    ncol   = 1,
+    facets = . ~ predictor
+  )
+```
+
+## Generalized additive models with random effects
+
+```{r}
+tictoc::tic("GAMM model fitting")
+vivax_gam_nb <- gamm4(
+  formula = 
+    vivax ~ 
+    offset(log(pop2015)) + 
+    s(reporting_time, by = prcp_std) + 
+    s(reporting_time, by = tmax_std),
+  random  = ~ (1 | year/month) + (1 | province/district),
+  family  = negbin(theta=getME(vivax_glm_nb_25, "glmer.nb.theta")),
+  data    = dataset,
+  REML    = TRUE
+)
+tictoc::toc()
+```
+
+```{r}
+summary(vivax_gam_nb$mer)
+```
+
+```{r}
+summary(vivax_gam_nb$gam)
+```
+
+#### Time-varying coefficients plot
+
+```{r}
+vivax_gam_terms <- mgcv::predict.gam(
+    object = vivax_gam_nb$gam,
+    type   = 'terms',
+    se.fit = TRUE
+  )
+
+vivax_gam_model_matrix <- vivax_gam_nb$gam$model[, c("prcp_std", "tmax_std")]
+vivax_gam_smooth_coef <- vivax_gam_terms$fit / vivax_gam_model_matrix
+vivax_gam_coef_names <- colnames(vivax_gam_model_matrix)
+
+vivax_gam_smooth_coef_se <- vivax_gam_terms$se.fit / sqrt(vivax_gam_model_matrix ^ 2)
+colnames(vivax_gam_smooth_coef_se) <- vivax_gam_coef_names
+
+df_vivax_gam_coef <- 
+  tibble::tibble(
+    reporting_date = dataset$reporting_date,
+    tibble::as_tibble(vivax_gam_smooth_coef)
+  ) %>% 
+  dplyr::group_by(reporting_date) %>% 
+  dplyr::summarise(
+    prcp_std = mean(prcp_std), 
+    tmax_std = mean(tmax_std)
+  ) %>% 
+  tidyr::pivot_longer(
+    cols = c(prcp_std, tmax_std),
+    names_to = "predictor",
+    values_to = "coef"
+  )
+
+df_vivax_gam_coef_se <- 
+  tibble::tibble(
+    reporting_date = dataset$reporting_date,
+    tibble::as_tibble(vivax_gam_smooth_coef_se)
+  ) %>%
+  dplyr::group_by(reporting_date) %>% 
+  dplyr::summarise(
+    prcp_std = mean(prcp_std), 
+    tmax_std = mean(tmax_std)
+  ) %>% 
+  tidyr::pivot_longer(
+    cols = c(prcp_std, tmax_std),
+    names_to = "predictor",
+    values_to = "coef_se"
+  )
+
+df_vivax_gam <- 
+  df_vivax_gam_coef %>% 
+  dplyr::inner_join(
+    x = df_vivax_gam_coef_se,
+    by = c('reporting_date', 'predictor')
+  )
+
+df_vivax_gam %>% 
+  ggplot2::ggplot(
+    aes(x = reporting_date, y = coef)
+  ) + 
+  ggplot2::geom_line(aes(y = coef)) +
+  ggplot2::geom_ribbon(
+    aes(
+      ymin = coef - 2 * coef_se,
+      ymax = coef + 2 * coef_se
+    ),
+    fill  = "grey70",
+    alpha = 0.8
+  ) +
+  ggplot2::scale_x_datetime(
+    date_labels = '%Y',
+    date_breaks = '1 year'
+  ) +
+  ggplot2::geom_vline(
+    aes(xintercept = as.numeric(dates)),
+    data     = df_intervention_period,
+    linetype = "dashed",
+    colour   = "red"
+  ) +
+  ggplot2::geom_hline(
+    aes(yintercept = 0),
+    linetype = 'dashed',
+    alpha    = 0.6
+  ) +
+  ggplot2::labs(
+    y = NULL, 
+    x = NULL
+  ) +
+  ggplot2::facet_wrap(
+    ncol   = 1,
+    facets = . ~ predictor
+  )
+```
+

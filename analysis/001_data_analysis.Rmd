@@ -286,7 +286,7 @@ vivax_glm_nb_base <-
     data    = dataset
   )
 
-summary(vivax_glm_nb_re_01)
+summary(vivax_glm_nb_base)
 ```
 
 We are going to take a step-wise forward predictor selection approach to build the model. At each step, we are going to add the predictors one by one, starting with the base model with the random effects only. The "best" model in each step is going to be the model with the lowest AIC and where all the fixed effects of the predictors are significant. This best model is going to serve as the base model for the following step. When no further additions improve the AIC o neither of them is significant, the selection is finished and we keep the last best model for further analysis.
@@ -616,7 +616,7 @@ df_intervention_period <-
 ```{r message=FALSE, warning=FALSE}
 vivax_rolling_glmer <- function(data) {
   model <- update(
-    vivax_glm_nb_re_01,
+    vivax_glm_nb_base,
     vivax ~ . + prcp_std + tmax_std,
     data    = data
   )
@@ -806,24 +806,6 @@ summary(vivax_gam_nb_s_aet$mer)
 summary(vivax_gam_nb_s_aet$gam)
 ```
 
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_me_s_aet <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + aet_std + s(reporting_time, by = aet_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_me_s_aet$mer)
-summary(vivax_gam_nb_me_s_aet$gam)
-```
 - `prcp`
 
 ```{r}
@@ -1497,6 +1479,8 @@ tictoc::toc()
 summary(vivax_gam_nb_s_4521$mer)
 summary(vivax_gam_nb_s_4521$gam)
 ```
+
+
 ```{r}
 tictoc::tic("GAMM model fitting")
 vivax_gam_nb_s_4526 <- gamm4(
@@ -1604,11 +1588,14 @@ vivax_gam_predictors <- c(
 )
 
 vivax_gam_model_matrix <- vivax_gam_nb_s_45216$gam$model[, vivax_gam_predictors]
+
 vivax_gam_s_coef <- vivax_gam_pred_terms$fit / vivax_gam_model_matrix
+
 vivax_gam_coef_names <- colnames(vivax_gam_model_matrix)
 
 vivax_gam_s_coef_se <- 
   vivax_gam_pred_terms$se.fit / sqrt(vivax_gam_model_matrix ^ 2)
+
 colnames(vivax_gam_s_coef_se) <- vivax_gam_coef_names
 
 df_vivax_gam_coef <- 
@@ -1632,7 +1619,7 @@ df_vivax_gam_coef <-
       aet_std,
       tmin_std
     ),
-    names_to = "predictor",
+    names_to  = "predictor",
     values_to = "coef"
   )
 
@@ -1657,14 +1644,14 @@ df_vivax_gam_coef_se <-
       aet_std,
       tmin_std
     ),
-    names_to = "predictor",
+    names_to  = "predictor",
     values_to = "coef_se"
   )
 
 df_vivax_gam <- 
   df_vivax_gam_coef %>% 
   dplyr::inner_join(
-    x = df_vivax_gam_coef_se,
+    x  = df_vivax_gam_coef_se,
     by = c('reporting_date', 'predictor')
   )
 
@@ -1708,4 +1695,35 @@ df_vivax_gam %>%
 
 ## Distributed lag model
 
+```{r}
+dataset %>% 
+  dplyr::group_by(district) %>% 
+  dplyr::arrange(reporting_date) %>% 
+  dplyr::mutate(
+    aet_lag1   = lag(aet_std),
+    prcp_lag1  = lag(prcp_std),
+    q_lag1     = lag(q_std),
+    soilm_lag1 = lag(soilm_std),
+    tmax_lag1  = lag(tmax_std),
+    tmin_lag1  = lag(tmin_std)
+  ) -> dataset
+```
+
+```{r}
+tictoc::tic("GAMM model fitting")
+vivax_gam_nb_s_aet_l1 <- gamm4(
+  formula = 
+    vivax ~ 
+    offset(log(pop2015)) + s(reporting_time, by = aet_lag1),
+  random  = ~ (1 | province/district),
+  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
+  data    = dataset[! is.na(dataset$aet_lag1), ],
+  REML    = TRUE
+)
+tictoc::toc()
+```
+
+```{r}
+summary(vivax_gam_nb_s_aet_l1$mer)
+```
 

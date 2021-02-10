@@ -340,10 +340,15 @@
     },
     "cowplot": {
       "Package": "cowplot",
-      "Version": "1.1.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "870b41daf1a4c3640f2e3407a40c31b9"
+      "Version": "1.1.1",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "cowplot",
+      "RemoteUsername": "wilkelab",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "555c9ae5d6cc3d261756f22112df0db316521e71",
+      "Hash": "41dc2a71d05252c75604a40fde3b2eba"
     },
     "cpp11": {
       "Package": "cpp11",
@@ -596,6 +601,18 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "f5f1e1d617d6fd9c67efa227f96d5404"
+    },
+    "gratia": {
+      "Package": "gratia",
+      "Version": "0.5.1.9000",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "gratia",
+      "RemoteUsername": "gavinsimpson",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "a36eeef2ac224dd0e73f1c27fa0accea69a9cb07",
+      "Hash": "535a6bb8ffbc76024f12db57b675bfa8"
     },
     "gridExtra": {
       "Package": "gridExtra",
@@ -856,6 +873,13 @@
       "Repository": "CRAN",
       "Hash": "6dfe8bf774944bd5595785e3229d8771"
     },
+    "mvnfast": {
+      "Package": "mvnfast",
+      "Version": "0.2.5.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "760c2afbd323d8d31d527d9360225e35"
+    },
     "nlme": {
       "Package": "nlme",
       "Version": "3.1-150",
@@ -911,6 +935,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "bbf1e5cf8653a539e4659c8c40f17b72"
+    },
+    "patchwork": {
+      "Package": "patchwork",
+      "Version": "1.1.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "c446b30cb33ec125ff02588b60660ccb"
     },
     "pbkrtest": {
       "Package": "pbkrtest",

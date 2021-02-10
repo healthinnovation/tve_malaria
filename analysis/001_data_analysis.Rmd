@@ -21,19 +21,22 @@ library(slider, warn.conflicts = FALSE)
 library(gamm4, warn.conflicts = FALSE)
 library(ggplot2, warn.conflicts = FALSE)
 library(tictoc)
+library(forecast)
+library(gratia)
+library(scales)
 ```
 
 # Data loading 
 
-## File path 
+Create csv. file path. 
 
-```{r message=FALSE, warning=FALSE}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 data_path <- file.path('../data/') # Data directory path
 file_name <- 'dt_final.csv' # csv. file name 
 file_path <- file.path(data_path, file_name) # File path
 ```
 
-## Column formatting 
+Define data types for columns.
 
 ```{r message=FALSE, warning=FALSE}
 # Column names
@@ -94,7 +97,7 @@ col_types <-
   )
 ```
 
-## Loading data 
+Reading csv. file.
 
 ```{r message=FALSE, warning=FALSE}
 raw_dataset <- 
@@ -109,17 +112,15 @@ raw_dataset <-
 
 ## Data validation 
 
-Checking data structure.
+Check data structure.
 
 ```{r message=FALSE, warning=FALSE}
 str(raw_dataset)
 ```
 
-Checking for missing values.
+Check for missing values.
 
 ```{r message=FALSE, warning=FALSE}
-cat("Percentage of missing values:\n")
-
 for (col in names(raw_dataset)) {
   cat(
     "-",
@@ -134,7 +135,7 @@ for (col in names(raw_dataset)) {
 }
 ```
 
-Checking categorical features.
+Check categorical features.
 
 ```{r message=FALSE, warning=FALSE}
 cate_features <- c()
@@ -144,8 +145,6 @@ for (col in names(raw_dataset)) {
     cate_features <- c(cate_features, col)
   }
 }
-
-cat("Number of different categories:\n")
 
 for (col in cate_features) {
   cat(
@@ -157,7 +156,7 @@ for (col in cate_features) {
 }
 ```
 
-Checking numerical features.
+Check numerical features.
 
 ```{r message=FALSE, warning=FALSE}
 num_features <- setdiff(names(raw_dataset), cate_features)
@@ -186,48 +185,166 @@ dataset <-
   dplyr::arrange(reporting_date)
 ```
 
-# Exploratory data analysis
-
-# Model building
-
-## Data wrangling
-
-### Feature encoding
-
-Create a new features for modeling:
-- `reporting_time`: encode `reporting_date` values into integers.
-- `distric_encoded`: encode `district` categories into integers.
-- `province_encoded`: encode `province` categories into integers.
+Encode `distric` and `province` as factors.
 
 ```{r message=FALSE, warning=FALSE}
 dataset <- 
   dataset %>% 
     dplyr::mutate(
-      reporting_time = 
-        as.numeric(
-          factor(
-            x      = reporting_date, 
-            labels = c(as.character(seq(1, 216)))
-          )
-        ),
-      district_encoded = 
-        as.numeric(
-          factor(
-            x      = district, 
-            labels = c(as.character(seq(1, 49)))
-          )
-        ),
-      province_encoded = 
-        as.numeric(
-          factor(
-            x      = province, 
-            labels = c(as.character(seq(1, 8)))
-          )
-        )
+      reporting_time = as.numeric(
+        factor(reporting_date),
+        labels = as.character(1:length(dataset$reporting_date))
+      ),
+      district = factor(district),
+      province = factor(province)
     )
 ```
 
+Create a data frame with the start and end dates of PAMAFRO intervention.
+
+```{r message=FALSE, warning=FALSE}
+start <- lubridate::make_datetime(
+  year = 2005,
+  month = 10,
+  day = 1L
+)
+
+end <- lubridate::make_datetime(
+  year = 2010,
+  month = 09,
+  day = 1L
+)
+
+df_intervention_period <- 
+  dplyr::tibble(
+    dates = c(start, end),
+    type = c(
+      'start',
+      'end'
+    )
+  )
+```
+
+# Exploratory data analysis
+
+Set `ggplot` theme.
+
+```{r message=FALSE, warning=FALSE}
+ggplot2::theme_set(theme_bw())
+theme_update(panel.grid = element_blank())
+```
+
+Monthly number of malaria cases reported (x1000) in Loreto from 2000 to 2017 by parasite.
+
+```{r message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(region, reporting_date) %>% 
+  dplyr::summarise(
+    falciparum = sum(falciparum),
+    vivax      = sum(vivax)
+  ) %>% 
+  tidyr::pivot_longer(
+    cols     = c(falciparum, vivax),
+    names_to = "parasite"
+  ) %>% 
+  dplyr::mutate(
+    parasite = factor(
+      x      = parasite, 
+      levels = c("falciparum", "vivax"), 
+      labels = c("P. falciparum", "P. vivax")
+    )
+  ) -> dataset_long
+
+dataset_long %>% 
+  ggplot(aes(x = reporting_date, y = value / 1000)) +
+  geom_line(aes(colour = parasite), size = 0.7) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+  geom_vline(
+    data = df_intervention_period,
+    aes(xintercept = as.numeric(dates)),
+    linetype = "dashed",
+    colour   = "red",
+    alpha    = 0.8
+  ) +
+  scale_x_datetime(date_labels = "%Y", date_breaks = "1 year") +
+  labs(y = "Number of malaria cases reported (x1000)", x = NULL) +
+  theme(legend.position = "top", legend.title = element_blank())
+```
+
+Total number of malaria cases reported (x1000) in Loreto from 2000 to 2017 by parasite.
+
+```{r message=FALSE, warning=FALSE}
+dataset %>% 
+  summarise(
+    vivax = sum(vivax),
+    falciparum = sum(falciparum)
+  )
+```
+Year-over-year percentage change of the number of malaria cases reported (x1000) in Loreto from 2000 to 2017 by parasite by parasite.
+
+```{r message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::group_by(year) %>% 
+  dplyr::summarise(
+    falciparum = sum(falciparum),
+    vivax = sum(vivax)
+  ) %>% 
+  dplyr::arrange(year) %>% 
+  dplyr::mutate(
+    yoy_falciparum = (falciparum - lag(falciparum)) / lag(falciparum),
+    yoy_vivax      = (vivax - lag(vivax)) / lag(vivax)
+  ) %>% 
+  tidyr::pivot_longer(
+    cols     = c(yoy_falciparum, yoy_vivax),
+    names_to = "parasite"
+  ) %>% 
+  dplyr::mutate(
+    parasite = factor(
+      x      = parasite, 
+      levels = c("yoy_falciparum", "yoy_vivax"), 
+      labels = c("P. falciparum", "P. vivax")
+    )
+  ) %>% 
+  ggplot(aes(x = year, y = value, fill = parasite)) +
+  geom_col(position = "dodge") +
+  scale_color_manual(values = c("#00AFBB", "#E7B800")) +
+  geom_vline(
+    data = tibble(dates = c(2005, 2010)),
+    aes(xintercept = dates),
+    linetype = "dashed",
+    colour   = "red",
+    alpha    = 0.8
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  # scale_x_discrete(breaks = )
+  labs(y = "Total number of malaria cases reported (x1000)", x = NULL) +
+  theme(legend.position = "top", legend.title = element_blank()) +
+  facet_wrap(~ parasite)
+```
+
+Top 10 district with higher MIR from 2000 to 2017
+
+```{r message=FALSE, warning=FALSE}
+dataset %>% 
+  dplyr::mutate(
+    ir_falciparum = falciparum / pop2015,
+    ir_vivax      = vivax / pop2015
+  ) %>% 
+  dplyr::group_by(district) %>% 
+  dplyr::summarise(
+    mir_falciparum = 1000 * mean(ir_falciparum),
+    mir_vivax = 1000 * mean(ir_vivax)
+  ) %>% 
+  dplyr::arrange(desc(mir_vivax)) %>% 
+  dplyr::top_n(10)
+```
+# Model building
+
+## Data wrangling
+
 ### Feature scaling
+
+Scale numerical features to have a mean = 0 and standard error = 1.
 
 ```{r message=FALSE, warning=FALSE}
 cont_features <- 
@@ -238,22 +355,6 @@ cont_features <-
     "soilm",
     "tmax",
     "tmin"
-  )
-
-mc_cont_features <- 
-  c(
-    "aet_mc",
-    "prcp_mc",
-    "q_mc",
-    "soilm_mc",
-    "tmax_mc",
-    "tmin_mc"
-  )
-
-dataset[, mc_cont_features] <- 
-  scale(
-    x = dataset[, cont_features], 
-    scale = FALSE
   )
 
 std_cont_features <- 
@@ -273,1457 +374,898 @@ dataset[, std_cont_features] <-
   )
 ```
 
-## Generalized linear model with random effects
+### Lags
 
-### Vivax
-
-We start with a model with a nested random effect of provinces and district.
-
-```{r}
-vivax_glm_nb_base <- 
-  lme4::glmer.nb(
-    formula = vivax ~ offset(log(pop2015)) + (1 | province/district),
-    data    = dataset
-  )
-
-summary(vivax_glm_nb_base)
-```
-
-We are going to take a step-wise forward predictor selection approach to build the model. At each step, we are going to add the predictors one by one, starting with the base model with the random effects only. The "best" model in each step is going to be the model with the lowest AIC and where all the fixed effects of the predictors are significant. This best model is going to serve as the base model for the following step. When no further additions improve the AIC o neither of them is significant, the selection is finished and we keep the last best model for further analysis.
-
-#### First step: adding single predictors to the base model
-
-- `aet`: actual evapotranspiration
-
-```{r}
-vivax_glm_nb_aet <- update(
-  vivax_glm_nb_base,
-  vivax ~ . + aet
-)
-
-summary(vivax_glm_nb_aet)
-```
-
-```{r}
-vivax_glm_nb_aet <- update(
-  vivax_glm_nb_base,
-  vivax ~ . + aet_mc
-)
-
-summary(vivax_glm_nb_aet)
-```
-
-```{r}
-vivax_glm_nb_aet <- update(
-  vivax_glm_nb_base,
-  vivax ~ . + aet_std
-)
-
-summary(vivax_glm_nb_aet)
-```
-
-- `prcp`: precipitation
-
-```{r}
-vivax_glm_nb_prcp <- update(
-  vivax_glm_nb_base,
-  vivax ~ . + prcp_std
-)
-
-summary(vivax_glm_nb_prcp)
-```
-
-- `q`: runoff
-
-```{r}
-vivax_glm_nb_q <- update(
-  vivax_glm_nb_base,
-  vivax ~ . + q_std
-)
-
-summary(vivax_glm_nb_q)
-```
-
-- `soilm`: soil moisture
-
-```{r}
-vivax_glm_nb_soilm <- update(
-  vivax_glm_nb_base,
-  vivax ~ . + soilm_std
-)
-
-summary(vivax_glm_nb_soilm)
-```
-
-- `tmax`: maximum temperature
-
-```{r}
-vivax_glm_nb_tmax <- update(
-  vivax_glm_nb_base,
-  vivax ~ . + tmax_std
-)
-
-summary(vivax_glm_nb_tmax)
-```
-
-- `tmin`: minimum temperature
-
-```{r}
-vivax_glm_nb_tmin <- update(
-  vivax_glm_nb_base,
-  vivax ~ . + tmin_std
-)
-
-summary(vivax_glm_nb_tmin)
-```
-
-Summary
-
-```{r}
-AIC(
-  vivax_glm_nb_base, 
-  vivax_glm_nb_aet,
-  vivax_glm_nb_prcp, 
-  vivax_glm_nb_q,
-  vivax_glm_nb_soilm,
-  vivax_glm_nb_tmax,
-  vivax_glm_nb_tmin
-)
-```
-
-#### Second step: adding single predictors to the model with precipitation
-
-- `prcp` and `aet`
-
-```{r}
-vivax_glm_nb_21 <- update(
-  vivax_glm_nb_prcp,
-  vivax ~ . + aet_std
-)
-
-summary(vivax_glm_nb_21)
-```
-
-```{r}
-anova(
-  vivax_glm_nb_base,
-  vivax_glm_nb_21
-)
-```
-
-- `prcp` and `q`
-
-```{r}
-vivax_glm_nb_23 <- update(
-  vivax_glm_nb_prcp,
-  vivax ~ . + q_std
-)
-
-summary(vivax_glm_nb_23)
-```
-
-```{r}
-anova(
-  vivax_glm_nb_base, vivax_glm_nb_23
-)
-```
-
-Runoff effect appear to be non-significant. However, recall that precipitation and runoff are highly correlated (r = 0.99), so this is a problem of multicollinearity.
-
-- `prcp` and `soilm`
-
-```{r}
-vivax_glm_nb_24 <- update(
-  vivax_glm_nb_prcp,
-  vivax ~ . + soilm_std
-)
-
-summary(vivax_glm_nb_24)
-```
-
-```{r}
-anova(
-  vivax_glm_nb_base, 
-  vivax_glm_nb_24
-)
-```
-
-- `prcp` and `tmax`
-
-```{r}
-vivax_glm_nb_25 <- update(
-  vivax_glm_nb_prcp,
-  vivax ~ . + tmax_std
-)
-
-summary(vivax_glm_nb_25)
-```
-
-```{r}
-anova(
-  vivax_glm_nb_base, 
-  vivax_glm_nb_25
-)
-```
-
-- `prcp` and `tmin`
-
-```{r}
-vivax_glm_nb_26 <- update(
-  vivax_glm_nb_prcp,
-  vivax ~ . + tmin_std
-)
-
-summary(vivax_glm_nb_26)
-```
-
-```{r}
-anova(
-  vivax_glm_nb_base, 
-  vivax_glm_nb_26
-)
-```
-
-Summary
-
-```{r}
-AIC(
-  vivax_glm_nb_base, 
-  vivax_glm_nb_aet,
-  vivax_glm_nb_prcp, 
-  vivax_glm_nb_q,
-  vivax_glm_nb_soilm,
-  vivax_glm_nb_tmax,
-  vivax_glm_nb_tmin,
-  vivax_glm_nb_21,
-  vivax_glm_nb_23,
-  vivax_glm_nb_24,
-  vivax_glm_nb_25,
-  vivax_glm_nb_26
-)
-```
-
-#### Third step: adding single predictors to the model with precipitation and maximum temperature
-
-- `prcp`, `tmax` and `aet`
-
-```{r}
-vivax_glm_nb_251 <- update(
-  vivax_glm_nb_25,
-  vivax ~ . + aet_std
-)
-
-summary(vivax_glm_nb_251)
-```
-
-```{r}
-anova(
-  vivax_glm_nb_base, 
-  vivax_glm_nb_251
-)
-```
-
-- `prcp`, `tmax` and `soilm`
-
-```{r}
-vivax_glm_nb_254 <- update(
-  vivax_glm_nb_25,
-  vivax ~ . + soilm_std
-)
-
-summary(vivax_glm_nb_254)
-```
-
-```{r}
-anova(
-  vivax_glm_nb_base, 
-  vivax_glm_nb_254
-)
-```
-
-- `prcp`, `tmax` and `tmin`
-
-```{r}
-vivax_glm_nb_256 <- update(
-  vivax_glm_nb_25,
-  vivax ~ . + tmin_std
-)
-
-summary(vivax_glm_nb_256)
-```
-
-```{r}
-anova(
-  vivax_glm_nb_base, 
-  vivax_glm_nb_256
-)
-```
-
-Summary
-
-```{r}
-AIC(
-  vivax_glm_nb_base, 
-  vivax_glm_nb_aet,
-  vivax_glm_nb_prcp, 
-  vivax_glm_nb_q,
-  vivax_glm_nb_soilm,
-  vivax_glm_nb_tmax,
-  vivax_glm_nb_tmin,
-  vivax_glm_nb_21,
-  vivax_glm_nb_23,
-  vivax_glm_nb_24,
-  vivax_glm_nb_25,
-  vivax_glm_nb_26,
-  vivax_glm_nb_251,
-  vivax_glm_nb_254,
-  vivax_glm_nb_256
-)
-```
-Adding `aet` to the model with `prcp` and `tmax` (best one so far) slightly improves the fit, but the main effect of `aet` is not significant. 
-
-```{r}
-sqrt(diag(vcov(vivax_glm_nb_25)))
-```
-
-## Rolling analysis
+Create lag features (1, 3, 6 and 12 months) from meteorological features.
 
 ```{r message=FALSE, warning=FALSE}
-ggplot2::theme_set(theme_light())
-
-df_intervention_period <- 
-  dplyr::tibble(
-    dates = c(
-      lubridate::make_datetime(
-        year = 2005,
-        month = 10,
-        day = 1L
-      ),
-      lubridate::make_datetime(
-        year = 2010,
-        month = 09,
-        day = 1L
-      )
-    ),
-    type = c(
-      'start',
-      'end'
-    )
-  )
-```
-
-
-```{r message=FALSE, warning=FALSE}
-vivax_rolling_glmer <- function(data) {
-  model <- update(
-    vivax_glm_nb_base,
-    vivax ~ . + prcp_std + tmax_std,
-    data    = data
-  )
-  
-  fit <- lme4::fixef(model)[2:3]
-  fit_se <- sqrt(diag(vcov(model)))[2:3]
-  names(fit_se) <- names(fit)
-  
-  df <- tibble::tibble(
-    reporting_date = max(data$reporting_date),
-    predictor      = names(fit),
-    fit            = fit,
-    fit_se         = fit_se
-  )
-  return(df)
-}
-```
-
-### 6 month window
-
-```{r message=FALSE, warning=FALSE}
-tictoc::tic("Rolling regression")
-vivax_rolling_glm_nb_6 <- slider::slide_period_dfr(
-  .x        = dataset,
-  .i        = dataset$reporting_date,
-  .period   = 'month',
-  .f        = vivax_rolling_glmer,
-  .every    = 1,
-  .before   = 5,
-  .complete = TRUE
-)
-tictoc::toc()
-```
-
-```{r message=FALSE, warning=FALSE}
-vivax_rolling_glm_nb_6 %>% 
-  ggplot2::ggplot(
-    aes(x = reporting_date, y = fit)
-  ) + 
-  ggplot2::geom_line(aes(y = fit)) +
-  ggplot2::geom_ribbon(
-    aes(
-      ymin = fit - 2 * fit_se,
-      ymax = fit + 2 * fit_se
-    ),
-    fill  = "grey70",
-    alpha = 0.8
-  ) +
-  ggplot2::scale_x_datetime(
-    date_labels = '%Y',
-    date_breaks = '1 year'
-  ) +
-  ggplot2::geom_vline(
-    aes(xintercept = as.numeric(dates)),
-    data     = df_intervention_period,
-    linetype = "dashed",
-    colour   = "red"
-  ) +
-  ggplot2::geom_hline(
-    aes(yintercept = 0),
-    linetype = 'dashed',
-    alpha    = 0.6
-  ) +
-  ggplot2::labs(
-    y = NULL, 
-    x = NULL
-  ) +
-  ggplot2::facet_wrap(
-    ncol   = 1,
-    facets = . ~ predictor
-  )
-```
-
-### 12 month window
-
-```{r message=FALSE, warning=FALSE}
-tictoc::tic("Rolling regression")
-vivax_rolling_glm_nb_12 <- slider::slide_period_dfr(
-  .x        = dataset,
-  .i        = dataset$reporting_date,
-  .period   = 'month',
-  .f        = vivax_rolling_glmer,
-  .every    = 1,
-  .before   = 11,
-  .complete = TRUE
-)
-tictoc::toc()
-```
-```{r message=FALSE, warning=FALSE}
-vivax_rolling_glm_nb_12 %>% 
-  ggplot2::ggplot(
-    aes(x = reporting_date, y = fit)
-  ) + 
-  ggplot2::geom_line(aes(y = fit)) +
-  ggplot2::geom_ribbon(
-    aes(
-      ymin = fit - 2 * fit_se,
-      ymax = fit + 2 * fit_se
-    ),
-    fill  = "grey70",
-    alpha = 0.8
-  ) +
-  ggplot2::scale_x_datetime(
-    date_labels = '%Y',
-    date_breaks = '1 year'
-  ) +
-  ggplot2::geom_vline(
-    aes(xintercept = as.numeric(dates)),
-    data     = df_intervention_period,
-    linetype = "dashed",
-    colour   = "red"
-  ) +
-  ggplot2::geom_hline(
-    aes(yintercept = 0),
-    linetype = 'dashed',
-    alpha    = 0.6
-  ) +
-  ggplot2::labs(
-    y = NULL, 
-    x = NULL
-  ) +
-  ggplot2::facet_wrap(
-    ncol   = 1,
-    facets = . ~ predictor
-  )
-```
-
-## Generalized additive models with random effects
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_base <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_base$mer)
-```
-
-### First step
-
-- `aet`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_aet <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + aet_std,
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_aet$mer)
-summary(vivax_gam_nb_aet$gam)
-```
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_aet <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + s(reporting_time, by = aet_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_aet$mer)
-summary(vivax_gam_nb_s_aet$gam)
-```
-
-- `prcp`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_prcp <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + s(reporting_time, by = prcp_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_prcp$mer)
-summary(vivax_gam_nb_s_prcp$gam)
-```
-
-- `q`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_q <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + s(reporting_time, by = q_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_q$mer)
-summary(vivax_gam_nb_s_q$gam)
-```
-
-- `soilm`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_soilm <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + s(reporting_time, by = soilm_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_soilm$mer)
-summary(vivax_gam_nb_s_soilm$gam)
-```
-
-- `tmax`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_tmax <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + s(reporting_time, by = tmax_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_tmax$mer)
-summary(vivax_gam_nb_s_tmax$gam)
-```
-
-- `tmin`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_tmin <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + s(reporting_time, by = tmin_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_tmin$mer)
-summary(vivax_gam_nb_s_tmin$gam)
-```
-
-- Summary
-
-```{r}
-AIC(
-  vivax_gam_nb_s_aet$mer,
-  vivax_gam_nb_s_prcp$mer,
-  vivax_gam_nb_s_q$mer,
-  vivax_gam_nb_s_soilm$mer,
-  vivax_gam_nb_s_tmax$mer,
-  vivax_gam_nb_s_tmin$mer
-)
-```
-### Second step
-
-- `soilm` and `aet`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_41 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = aet_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_41$mer)
-summary(vivax_gam_nb_s_41$gam)
-```
-
-- `soilm` and `prcp`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_42 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = prcp_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_42$mer)
-summary(vivax_gam_nb_s_42$gam)
-```
-
-- `soilm` and `q`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_43 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = q_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_43$mer)
-summary(vivax_gam_nb_s_43$gam)
-```
-
-- `soilm` and `tmax`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_45 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_45$mer)
-summary(vivax_gam_nb_s_45$gam)
-```
-
-- `soilm` and `tmin`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_46 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmin_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_46$mer)
-summary(vivax_gam_nb_s_46$gam)
-```
-
-- Summary
-
-```{r}
-AIC(
-  vivax_gam_nb_s_41$mer,
-  vivax_gam_nb_s_42$mer,
-  vivax_gam_nb_s_43$mer,
-  vivax_gam_nb_s_45$mer,
-  vivax_gam_nb_s_46$mer
-)
-```
-### Third step
-
-- `soilm`, `tmax` and `aet`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_451 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = aet_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_451$mer)
-summary(vivax_gam_nb_s_451$gam)
-```
-- `soilm`, `tmax` and `prcp`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_452 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = prcp_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_452$mer)
-summary(vivax_gam_nb_s_452$gam)
-```
-- `soilm`, `tmax` and `q`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_453 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = q_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_453$mer)
-summary(vivax_gam_nb_s_453$gam)
-```
-
-- `soilm`, `tmax` and `tmin`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_456 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = tmin_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_456$mer)
-summary(vivax_gam_nb_s_456$gam)
-```
-
-- Summary
-
-```{r}
-aic_third_step <- AIC(
-    vivax_gam_nb_s_aet$mer,
-    vivax_gam_nb_s_prcp$mer,
-    vivax_gam_nb_s_q$mer,
-    vivax_gam_nb_s_soilm$mer,
-    vivax_gam_nb_s_tmax$mer,
-    vivax_gam_nb_s_tmin$mer,
-    vivax_gam_nb_s_41$mer,
-    vivax_gam_nb_s_42$mer,
-    vivax_gam_nb_s_43$mer,
-    vivax_gam_nb_s_45$mer,
-    vivax_gam_nb_s_46$mer,
-    vivax_gam_nb_s_451$mer,
-    vivax_gam_nb_s_452$mer,
-    vivax_gam_nb_s_453$mer,
-    vivax_gam_nb_s_456$mer
-  )
-
-tibble::tibble(
-  model = row.names(aic_third_step),
-  aic_third_step
-) %>% 
-  dplyr::arrange(AIC)
-```
-
-### Fourth step
-
-- `soilm`, `tmax`, `q` and `aet`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_4531 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = q_std) +
-    s(reporting_time, by = aet_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_4531$mer)
-summary(vivax_gam_nb_s_4531$gam)
-```
-- `soilm`, `tmax`, `q` and `prcp`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_4532 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = q_std) +
-    s(reporting_time, by = prcp_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_4532$mer)
-summary(vivax_gam_nb_s_4532$gam)
-```
-- `soilm`, `tmax`, `q` and `tmin`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_4536 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = q_std) +
-    s(reporting_time, by = tmin_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_4536$mer)
-summary(vivax_gam_nb_s_4536$gam)
-```
-- Summary
-
-```{r}
-aic_fourth_step <- AIC(
-    vivax_gam_nb_s_aet$mer,
-    vivax_gam_nb_s_prcp$mer,
-    vivax_gam_nb_s_q$mer,
-    vivax_gam_nb_s_soilm$mer,
-    vivax_gam_nb_s_tmax$mer,
-    vivax_gam_nb_s_tmin$mer,
-    vivax_gam_nb_s_41$mer,
-    vivax_gam_nb_s_42$mer,
-    vivax_gam_nb_s_43$mer,
-    vivax_gam_nb_s_45$mer,
-    vivax_gam_nb_s_46$mer,
-    vivax_gam_nb_s_451$mer,
-    vivax_gam_nb_s_452$mer,
-    vivax_gam_nb_s_453$mer,
-    vivax_gam_nb_s_456$mer,
-    vivax_gam_nb_s_4531$mer,
-    vivax_gam_nb_s_4532$mer,
-    vivax_gam_nb_s_4536$mer
-  )
-
-tibble::tibble(
-  model = row.names(aic_fourth_step),
-  aic_fourth_step
-) %>% 
-  dplyr::arrange(AIC)
-```
-### Fifth step
-
-- `soilm`, `tmax`, `q`, `prcp` and `aet`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_45321 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = q_std) +
-    s(reporting_time, by = prcp_std) +
-    s(reporting_time, by = aet_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_45321$mer)
-summary(vivax_gam_nb_s_45321$gam)
-```
-- `soilm`, `tmax`, `q`, `prcp` and `tmin`
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_45326 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = q_std) +
-    s(reporting_time, by = prcp_std) +
-    s(reporting_time, by = tmin_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_45326$mer)
-summary(vivax_gam_nb_s_45326$gam)
-```
-
-
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_45216 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = prcp_std) +
-    s(reporting_time, by = aet_std) +
-    s(reporting_time, by = tmin_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_45216$mer)
-summary(vivax_gam_nb_s_45216$gam)
-```
-
-- Summary
-
-```{r}
-aic_fifth_step <- AIC(
-    vivax_gam_nb_s_aet$mer,
-    vivax_gam_nb_s_prcp$mer,
-    vivax_gam_nb_s_q$mer,
-    vivax_gam_nb_s_soilm$mer,
-    vivax_gam_nb_s_tmax$mer,
-    vivax_gam_nb_s_tmin$mer,
-    vivax_gam_nb_s_41$mer,
-    vivax_gam_nb_s_42$mer,
-    vivax_gam_nb_s_43$mer,
-    vivax_gam_nb_s_45$mer,
-    vivax_gam_nb_s_46$mer,
-    vivax_gam_nb_s_451$mer,
-    vivax_gam_nb_s_452$mer,
-    vivax_gam_nb_s_453$mer,
-    vivax_gam_nb_s_456$mer,
-    vivax_gam_nb_s_4531$mer,
-    vivax_gam_nb_s_4532$mer,
-    vivax_gam_nb_s_4536$mer,
-    vivax_gam_nb_s_45321$mer,
-    vivax_gam_nb_s_45326$mer
-  )
-
-tibble::tibble(
-  model = row.names(aic_fifth_step),
-  aic_fifth_step
-) %>% 
-  dplyr::arrange(AIC)
-```
-### Sixth step
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_full <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = q_std) +
-    s(reporting_time, by = prcp_std) +
-    s(reporting_time, by = tmin_std) +
-    s(reporting_time, by = aet_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_full$mer)
-summary(vivax_gam_nb_s_full$gam)
-```
-```{r}
-aic_sixth_step <- AIC(
-    vivax_gam_nb_s_aet$mer,
-    vivax_gam_nb_s_prcp$mer,
-    vivax_gam_nb_s_q$mer,
-    vivax_gam_nb_s_soilm$mer,
-    vivax_gam_nb_s_tmax$mer,
-    vivax_gam_nb_s_tmin$mer,
-    vivax_gam_nb_s_41$mer,
-    vivax_gam_nb_s_42$mer,
-    vivax_gam_nb_s_43$mer,
-    vivax_gam_nb_s_45$mer,
-    vivax_gam_nb_s_46$mer,
-    vivax_gam_nb_s_451$mer,
-    vivax_gam_nb_s_452$mer,
-    vivax_gam_nb_s_453$mer,
-    vivax_gam_nb_s_456$mer,
-    vivax_gam_nb_s_4531$mer,
-    vivax_gam_nb_s_4532$mer,
-    vivax_gam_nb_s_4536$mer,
-    vivax_gam_nb_s_45321$mer,
-    vivax_gam_nb_s_45326$mer,
-    vivax_gam_nb_s_full$mer
-  )
-
-tibble::tibble(
-  model = row.names(aic_sixth_step),
-  aic_sixth_step
-) %>% 
-  dplyr::arrange(AIC)
-```
-```{r}
-plot(vivax_gam_nb_s_full$gam, pages=1)
-```
-
-```{r}
-anova(vivax_gam_nb_s_full$gam)
-```
-
-### Final step
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_4521 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = prcp_std) +
-    s(reporting_time, by = aet_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_4521$mer)
-summary(vivax_gam_nb_s_4521$gam)
-```
-
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_4526 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = prcp_std) +
-    s(reporting_time, by = tmin_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_4526$mer)
-summary(vivax_gam_nb_s_4526$gam)
-```
-
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_45216 <- gamm4(
-  formula = 
-    vivax ~ 
-    offset(log(pop2015)) + 
-    s(reporting_time, by = soilm_std) +
-    s(reporting_time, by = tmax_std) +
-    s(reporting_time, by = prcp_std) +
-    s(reporting_time, by = aet_std) +
-    s(reporting_time, by = tmin_std),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset,
-  REML    = TRUE
-)
-tictoc::toc()
-```
-
-```{r}
-summary(vivax_gam_nb_s_45216$mer)
-summary(vivax_gam_nb_s_45216$gam)
-```
-```{r}
-aic_final_step <- AIC(
-    vivax_gam_nb_s_aet$mer,
-    vivax_gam_nb_s_prcp$mer,
-    vivax_gam_nb_s_q$mer,
-    vivax_gam_nb_s_soilm$mer,
-    vivax_gam_nb_s_tmax$mer,
-    vivax_gam_nb_s_tmin$mer,
-    vivax_gam_nb_s_41$mer,
-    vivax_gam_nb_s_42$mer,
-    vivax_gam_nb_s_43$mer,
-    vivax_gam_nb_s_45$mer,
-    vivax_gam_nb_s_46$mer,
-    vivax_gam_nb_s_451$mer,
-    vivax_gam_nb_s_452$mer,
-    vivax_gam_nb_s_453$mer,
-    vivax_gam_nb_s_456$mer,
-    vivax_gam_nb_s_4531$mer,
-    vivax_gam_nb_s_4532$mer,
-    vivax_gam_nb_s_4536$mer,
-    vivax_gam_nb_s_45321$mer,
-    vivax_gam_nb_s_45326$mer,
-    vivax_gam_nb_s_full$mer,
-    vivax_gam_nb_s_4521$mer,
-    vivax_gam_nb_s_4526$mer,
-    vivax_gam_nb_s_45216$mer
-  )
-
-tibble::tibble(
-  model = row.names(aic_final_step),
-  aic_final_step
-) %>% 
-  dplyr::arrange(AIC)
-```
-
-```{r}
-plot(vivax_gam_nb_s_45216$gam, pages=1)
-```
-
-```{r}
-anova(vivax_gam_nb_s_45216$gam)
-```
-
-#### Time-varying coefficients plot
-
-```{r}
-vivax_gam_pred_terms <- mgcv::predict.gam(
-    object = vivax_gam_nb_s_45216$gam,
-    type   = 'terms',
-    se.fit = TRUE
-  )
-
-vivax_gam_predictors <- c(
-  "soilm_std", 
-  "tmax_std", 
-  "prcp_std", 
-  "aet_std", 
-  "tmin_std"
-)
-
-vivax_gam_model_matrix <- vivax_gam_nb_s_45216$gam$model[, vivax_gam_predictors]
-
-vivax_gam_s_coef <- vivax_gam_pred_terms$fit / vivax_gam_model_matrix
-
-vivax_gam_coef_names <- colnames(vivax_gam_model_matrix)
-
-vivax_gam_s_coef_se <- 
-  vivax_gam_pred_terms$se.fit / sqrt(vivax_gam_model_matrix ^ 2)
-
-colnames(vivax_gam_s_coef_se) <- vivax_gam_coef_names
-
-df_vivax_gam_coef <- 
-  tibble::tibble(
-    reporting_date = dataset$reporting_date,
-    tibble::as_tibble(vivax_gam_s_coef)
-  ) %>% 
-  dplyr::group_by(reporting_date) %>% 
-  dplyr::summarise(
-    soilm_std = mean(soilm_std), 
-    tmax_std  = mean(tmax_std),
-    prcp_std  = mean(prcp_std),
-    aet_std   = mean(aet_std),
-    tmin_std  = mean(tmin_std)
-  ) %>% 
-  tidyr::pivot_longer(
-    cols = c(
-      soilm_std,
-      tmax_std,
-      prcp_std,
-      aet_std,
-      tmin_std
-    ),
-    names_to  = "predictor",
-    values_to = "coef"
-  )
-
-df_vivax_gam_coef_se <- 
-  tibble::tibble(
-    reporting_date = dataset$reporting_date,
-    tibble::as_tibble(vivax_gam_s_coef_se)
-  ) %>%
-  dplyr::group_by(reporting_date) %>% 
-  dplyr::summarise(
-    soilm_std = mean(soilm_std), 
-    tmax_std  = mean(tmax_std),
-    prcp_std  = mean(prcp_std),
-    aet_std   = mean(aet_std),
-    tmin_std  = mean(tmin_std)
-  ) %>% 
-  tidyr::pivot_longer(
-    cols = c(
-      soilm_std,
-      tmax_std,
-      prcp_std,
-      aet_std,
-      tmin_std
-    ),
-    names_to  = "predictor",
-    values_to = "coef_se"
-  )
-
-df_vivax_gam <- 
-  df_vivax_gam_coef %>% 
-  dplyr::inner_join(
-    x  = df_vivax_gam_coef_se,
-    by = c('reporting_date', 'predictor')
-  )
-
-df_vivax_gam %>% 
-  ggplot2::ggplot(
-    aes(x = reporting_date, y = coef)
-  ) + 
-  ggplot2::geom_line(aes(y = coef)) +
-  ggplot2::geom_ribbon(
-    aes(
-      ymin = coef - 2 * coef_se,
-      ymax = coef + 2 * coef_se
-    ),
-    fill  = "grey70",
-    alpha = 0.8
-  ) +
-  ggplot2::scale_x_datetime(
-    date_labels = '%Y',
-    date_breaks = '1 year'
-  ) +
-  ggplot2::geom_vline(
-    aes(xintercept = as.numeric(dates)),
-    data     = df_intervention_period,
-    linetype = "dashed",
-    colour   = "red"
-  ) +
-  ggplot2::geom_hline(
-    aes(yintercept = 0),
-    linetype = 'dashed',
-    alpha    = 0.6
-  ) +
-  ggplot2::labs(
-    y = NULL, 
-    x = NULL
-  ) +
-  ggplot2::facet_wrap(
-    ncol   = 1,
-    facets = . ~ predictor
-  )
-```
-
-## Distributed lag model
-
-```{r}
 dataset %>% 
   dplyr::group_by(district) %>% 
   dplyr::arrange(reporting_date) %>% 
   dplyr::mutate(
-    aet_lag1   = lag(aet_std),
-    prcp_lag1  = lag(prcp_std),
-    q_lag1     = lag(q_std),
-    soilm_lag1 = lag(soilm_std),
-    tmax_lag1  = lag(tmax_std),
-    tmin_lag1  = lag(tmin_std)
+    aet_l01    = lag(aet_std,   n = 1L),
+    aet_l03    = lag(aet_std,   n = 3L),
+    aet_l06    = lag(aet_std,   n = 16L),
+    aet_l12    = lag(aet_std,   n = 22L),
+    prcp_l01   = lag(prcp_std,  n = 1L),
+    prcp_l03   = lag(prcp_std,  n = 3L),
+    prcp_l06   = lag(prcp_std,  n = 16L),
+    prcp_l12   = lag(prcp_std,  n = 22L),
+    q_l01      = lag(q_std,     n = 1L),
+    q_l03      = lag(q_std,     n = 3L),
+    q_l06      = lag(q_std,     n = 16L),
+    q_l12      = lag(q_std,     n = 22L),
+    soilm_l01  = lag(soilm_std, n = 1L),
+    soilm_l03  = lag(soilm_std, n = 3L),
+    soilm_l06  = lag(soilm_std, n = 16L),
+    soilm_l12  = lag(soilm_std, n = 22L),
+    tmax_l01   = lag(tmax_std,  n = 1L),
+    tmax_l03   = lag(tmax_std,  n = 3L),
+    tmax_l06   = lag(tmax_std,  n = 16L),
+    tmax_l12   = lag(tmax_std,  n = 22L),
+    tmin_l01   = lag(tmin_std,  n = 1L),
+    tmin_l03   = lag(tmin_std,  n = 3L),
+    tmin_l06   = lag(tmin_std,  n = 16L),
+    tmin_l12   = lag(tmin_std,  n = 22L)
   ) -> dataset
 ```
 
-```{r}
-tictoc::tic("GAMM model fitting")
-vivax_gam_nb_s_aet_l1 <- gamm4(
+## Generalized additive models with random effects
+
+### Vivax
+
+Model with no lag features.
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("GAM model fitting")
+vivax_tvcm <- mgcv::bam(
   formula = 
     vivax ~ 
-    offset(log(pop2015)) + s(reporting_time, by = aet_lag1),
-  random  = ~ (1 | province/district),
-  family  = negbin(theta=getME(vivax_glm_nb_base, "glmer.nb.theta")),
-  data    = dataset[! is.na(dataset$aet_lag1), ],
-  REML    = TRUE
+    offset(log(pop2015)) +
+    s(district, bs = "re", k = 49) +
+    s(reporting_time, by = aet_std,   bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_std,  bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_std, bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_std,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_std,  bs = "tp", k = 20),
+  family   = nb(),
+  data     = dataset,
+  method   = "fREML",
+  discrete = TRUE
 )
 tictoc::toc()
 ```
 
-```{r}
-summary(vivax_gam_nb_s_aet_l1$mer)
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm$converged
 ```
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm$sp
+```
+
+```{r message=FALSE, warning=FALSE}
+summary.gam(vivax_tvcm)
+```
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm$aic
+```
+
+```{r message=FALSE, warning=FALSE}
+appraise(vivax_tvcm)
+```
+
+```{r message=FALSE, warning=FALSE}
+gam.check(vivax_tvcm)
+```
+
+```{r include=FALSE,message=FALSE, warning=FALSE}
+plot_vivax_tvcm <- plot.gam(vivax_tvcm)
+```
+
+```{r message=FALSE, warning=FALSE}
+tibble::tibble(
+  vivax_tvcm$model,
+  fitted = vivax_tvcm$fitted.values,
+  residual = residuals(vivax_tvcm, type = "deviance")
+) %>% ggplot(aes(x = fitted, y = residual)) + geom_point()
+```
+
+#### Distributed lag models
+
+Model with lag = 1 month.
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("GAM model fitting")
+vivax_tvcm_l01 <- mgcv::bam(
+  formula = 
+    vivax ~ 
+    offset(log(pop2015)) + 
+    s(district, bs = "re") +
+    s(reporting_time, by = aet_l01,   bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l01,  bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l01, bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l01,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l01,  bs = "tp", k = 20),
+  family   = nb(),
+  data     = dataset[!is.na(dataset$soilm_l01), ],
+  method   = "fREML",
+  discrete = TRUE
+)
+tictoc::toc()
+```
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l01$converged
+```
+
+```{r message=FALSE, warning=FALSE}
+summary.gam(vivax_tvcm_l01)
+```
+
+```{r message=FALSE, warning=FALSE}
+gam.check(vivax_tvcm_l01)
+```
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l01$aic
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+plot_vivax_tvcm_l01 <- plot.gam(vivax_tvcm_l01)
+```
+
+Model with lag = 3 months.
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("GAM model fitting")
+vivax_tvcm_l03 <- mgcv::bam(
+  formula = 
+    vivax ~ 
+    offset(log(pop2015)) + 
+    s(district, bs = "re") +
+    s(reporting_time, by = aet_l03,   bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l03,  bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l03, bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l03,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l03,  bs = "tp", k = 20),
+  family   = nb(),
+  data     = dataset[!is.na(dataset$soilm_l03), ],
+  method   = "fREML",
+  discrete = TRUE
+)
+tictoc::toc()
+```
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l03$converged
+```
+
+```{r message=FALSE, warning=FALSE}
+summary.gam(vivax_tvcm_l03)
+```
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l03$aic
+```
+
+```{r message=FALSE, warning=FALSE}
+gam.check(vivax_tvcm_l03)
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+plot_vivax_tvcm_l03 <- plot.gam(vivax_tvcm_l03)
+```
+
+Model with lag = 6 months.
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("GAM model fitting")
+vivax_tvcm_l06 <- mgcv::bam(
+  formula = 
+    vivax ~ 
+    offset(log(pop2015)) + 
+    s(district, bs = "re") +
+    s(reporting_time, by = aet_l06,   bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l06,  bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l06, bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l06,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l06,  bs = "tp", k = 20),
+  family   = nb(),
+  data     = dataset[!is.na(dataset$soilm_l06), ],
+  method   = "fREML",
+  discrete = TRUE
+)
+tictoc::toc()
+```
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l06$converged
+```
+
+```{r message=FALSE, warning=FALSE}
+summary.gam(vivax_tvcm_l06)
+```
+
+```{r message=FALSE, warning=FALSE}
+gam.check(vivax_tvcm_l06)
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+plot_vivax_tvcm_l06 <- plot.gam(vivax_tvcm_l06)
+```
+
+Model with lag = 12 months.
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("GAM model fitting")
+vivax_tvcm_l12 <- mgcv::bam(
+  formula = 
+    vivax ~ 
+    offset(log(pop2015)) + 
+    s(district, bs = "re") +
+    s(reporting_time, by = aet_l12,   bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l12,  bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l12, bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l12,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l12,  bs = "tp", k = 20),
+  family   = nb(),
+  data     = dataset[!is.na(dataset$soilm_l12), ],
+  method   = "fREML",
+  discrete = TRUE
+)
+tictoc::toc()
+```
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l12$converged
+```
+
+```{r message=FALSE, warning=FALSE}
+summary.gam(vivax_tvcm_l12)
+```
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l12$aic
+```
+
+```{r message=FALSE, warning=FALSE}
+gam.check(vivax_tvcm_l12)
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+plot_vivax_tvcm_l12 <- plot.gam(vivax_tvcm_l12)
+```
+
+Model with all the lag features.
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("GAM model fitting")
+vivax_tvcm_l <- mgcv::bam(
+  formula = 
+    vivax ~ 
+    offset(log(pop2015)) + 
+    s(district, bs = "re") +
+    s(reporting_time, by = aet_l01,   bs = "tp", k = 20) +
+    s(reporting_time, by = aet_l03,   bs = "tp", k = 20) +
+    s(reporting_time, by = aet_l06,   bs = "tp", k = 20) +
+    s(reporting_time, by = aet_l12,   bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l01,  bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l03,  bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l06,  bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l12,  bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l01, bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l03, bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l06, bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l12, bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l01,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l03,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l06,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l12,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l01,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l03,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l06,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l12,  bs = "tp", k = 20),
+  family   = nb(),
+  data     = dataset[!is.na(dataset$soilm_l12), ],
+  method   = "fREML",
+  discrete = TRUE
+)
+tictoc::toc()
+```
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l$converged
+```
+
+```{r message=FALSE, warning=FALSE}
+summary(vivax_tvcm_l)
+```
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l$aic
+```
+
+```{r message=FALSE, warning=FALSE}
+gam.check(vivax_tvcm_l)
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+plot_vivax_tvcm_l <- plot.gam(vivax_tvcm_l)
+```
+
+#### Time-varying coefficients plots
+
+```{r message=FALSE, warning=FALSE}
+plot_tvcm <- function(plot, labels, ylim) {
+  n_plots <- length(plot)
+  dfs <-  vector(mode = "list", length = n_plots - 1)
+  
+  for (i in 2:n_plots) {
+    dfs[[(i-1)]] <- 
+      tibble::tibble(
+        x    = plot[[i]]$x,
+        se   = plot[[i]]$se,
+        fit  = plot[[i]]$fit,
+        term = labels[(i-1)]
+      )
+  }
+  
+  df <- dplyr::bind_rows(dfs)
+  df$term <- factor(df$term, labels)
+  
+  tvc_plot <- ggplot(
+    data = df,
+    aes(x = x, y = fit)
+  )
+
+  tvc_plot +
+    geom_line(aes(y = fit)) +
+    geom_ribbon(
+      aes(
+        ymin = fit + se,
+        ymax = fit - se
+      ),
+      fill  = "grey70",
+      alpha = 0.7
+    ) +
+    geom_vline(
+      data = tibble(dates = c(70, 129)),
+      aes(xintercept = dates),
+      linetype = "dashed",
+      colour   = "red"
+    ) +
+    geom_hline(
+      aes(yintercept = 0),
+      linetype = "dashed",
+      alpha = 0.6
+    ) +
+    scale_y_continuous(limits = ylim, n.breaks = 9) +
+    scale_x_continuous(limits = c(1, 216), n.breaks = 5) +
+    geom_rug(sides = "b") +
+    facet_wrap(~ term, ncol = 2) +
+    ylab("b(t)") +
+    xlab("Reporting time")
+}
+```
+
+Model with no lag features.
+
+```{r message=FALSE, warning=FALSE}
+vivax_ylim <- c(-1.6, 1.6)
+
+vivax_tvcm_labels <- c(
+    "Actual Evapotranspiration",
+    "Precipitation",
+    "Soil Moisture",
+    "Max Temperature",
+    "Min Temperature"
+  )
+
+plot_tvcm(plot_vivax_tvcm, vivax_tvcm_labels, c(-3, 2))
+```
+
+Model with lag = 1 month.
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l01_labels <- c(
+    "Actual Evapotranspiration (lag = 1)",
+    "Precipitation (lag = 1)",
+    "Soil Moisture (lag = 1)",
+    "Max Temperature (lag = 1)",
+    "Min Temperature (lag = 1)"
+  )
+
+plot_tvcm(plot_vivax_tvcm_l01, vivax_tvcm_l01_labels, c(-3, 2))
+```
+
+Model with lag = 3 months.
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l03_labels <- c(
+    "Actual Evapotranspiration (lag = 3)",
+    "Precipitation (lag = 3)",
+    "Soil Moisture (lag = 3)",
+    "Max Temperature (lag = 3)",
+    "Min Temperature (lag = 3)"
+  )
+
+plot_tvcm(plot_vivax_tvcm_l03, vivax_tvcm_l03_labels, vivax_ylim)
+```
+
+Model with lag = 6 months.
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l06_labels <- c(
+    "Actual Evapotranspiration (lag = 6)",
+    "Precipitation (lag = 6)",
+    "Soil Moisture (lag = 6)",
+    "Max Temperature (lag = 6)",
+    "Min Temperature (lag = 6)"
+  )
+
+plot_tvcm(plot_vivax_tvcm_l06, vivax_tvcm_l06_labels, vivax_ylim)
+```
+
+Model with lag = 12 months.
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l12_labels <- c(
+    "Actual Evapotranspiration (lag = 12)",
+    "Precipitation (lag = 12)",
+    "Soil Moisture (lag = 12)",
+    "Max Temperature (lag = 12)",
+    "Min Temperature (lag = 12)"
+  )
+
+plot_tvcm(plot_vivax_tvcm_l12, vivax_tvcm_l12_labels, vivax_ylim)
+```
+
+Model with all the lag features.
+
+```{r message=FALSE, warning=FALSE}
+vivax_tvcm_l_labels <- c(
+    "Actual Evapotranspiration (lag = 1)",
+    "Actual Evapotranspiration (lag = 3)",
+    "Actual Evapotranspiration (lag = 6)",
+    "Actual Evapotranspiration (lag = 12)",
+    "Precipitation (lag = 1)",
+    "Precipitation (lag = 3)",
+    "Precipitation (lag = 6)",
+    "Precipitation (lag = 12)",
+    "Soil Moisture (lag = 1)",
+    "Soil Moisture (lag = 3)",
+    "Soil Moisture (lag = 6)",
+    "Soil Moisture (lag = 12)",
+    "Max Temperature (lag = 1)",
+    "Max Temperature (lag = 3)",
+    "Max Temperature (lag = 6)",
+    "Max Temperature (lag = 12)",
+    "Min Temperature (lag = 1)",
+    "Min Temperature (lag = 3)",
+    "Min Temperature (lag = 6)",
+    "Min Temperature (lag = 12)"
+  )
+
+plot_tvcm(plot_vivax_tvcm_l[1:5], vivax_tvcm_l_labels[1:5], vivax_ylim)
+```
+
+```{r message=FALSE, warning=FALSE}
+plot_tvcm(plot_vivax_tvcm_l[5:9], vivax_tvcm_l_labels[5:9], vivax_ylim)
+```
+
+```{r message=FALSE, warning=FALSE}
+plot_tvcm(plot_vivax_tvcm_l[9:13], vivax_tvcm_l_labels[9:13], vivax_ylim)
+```
+
+```{r message=FALSE, warning=FALSE}
+plot_tvcm(plot_vivax_tvcm_l[13:17], vivax_tvcm_l_labels[13:17], vivax_ylim)
+```
+
+```{r message=FALSE, warning=FALSE}
+plot_tvcm(plot_vivax_tvcm_l[17:21], vivax_tvcm_l_labels[17:21], vivax_ylim)
+```
+
+### Falciparum
+
+Model with no lag features.
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("GAM model fitting")
+falciparum_tvcm <- mgcv::bam(
+  formula = 
+    falciparum ~ 
+    offset(log(pop2015)) +
+    s(district, bs = "re", k = 49) +
+    s(reporting_time, by = aet_std,   bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_std,  bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_std, bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_std,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_std,  bs = "tp", k = 20),
+  family   = nb(),
+  data     = dataset,
+  method   = "fREML",
+  discrete = TRUE
+)
+tictoc::toc()
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm$converged
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm$sp
+```
+
+```{r message=FALSE, warning=FALSE}
+summary.gam(falciparum_tvcm)
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm$aic
+```
+
+```{r message=FALSE, warning=FALSE}
+gam.check(falciparum_tvcm)
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+plot_falciparum_tvcm <- plot.gam(falciparum_tvcm)
+```
+
+Distributed lag models
+
+Model with lag = 1 month.
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("GAM model fitting")
+falciparum_tvcm_l01 <- mgcv::bam(
+  formula = 
+    falciparum ~ 
+    offset(log(pop2015)) + 
+    s(district, bs = "re") +
+    s(reporting_time, by = aet_l01,   bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l01,  bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l01, bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l01,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l01,  bs = "tp", k = 20),
+  family   = nb(),
+  data     = dataset[!is.na(dataset$soilm_l01), ],
+  method   = "fREML",
+  discrete = TRUE
+)
+tictoc::toc()
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l01$converged
+```
+
+```{r message=FALSE, warning=FALSE}
+summary.gam(falciparum_tvcm_l01)
+```
+
+```{r message=FALSE, warning=FALSE}
+gam.check(falciparum_tvcm_l01)
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l01$aic
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+plot_falciparum_tvcm_l01 <- plot.gam(falciparum_tvcm_l01)
+```
+
+Model with lag = 3 months.
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("GAM model fitting")
+falciparum_tvcm_l03 <- mgcv::bam(
+  formula = 
+    falciparum ~ 
+    offset(log(pop2015)) + 
+    s(district, bs = "re") +
+    s(reporting_time, by = aet_l03,   bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l03,  bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l03, bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l03,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l03,  bs = "tp", k = 20),
+  family   = nb(),
+  data     = dataset[!is.na(dataset$soilm_l03), ],
+  method   = "fREML",
+  discrete = TRUE
+)
+tictoc::toc()
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l03$converged
+```
+
+```{r message=FALSE, warning=FALSE}
+summary.gam(falciparum_tvcm_l03)
+```
+
+```{r message=FALSE, warning=FALSE}
+gam.check(falciparum_tvcm_l03)
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l03$aic
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+plot_falciparum_tvcm_l03 <- plot.gam(falciparum_tvcm_l03)
+```
+
+Model with lag = 6 months.
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("GAM model fitting")
+falciparum_tvcm_l06 <- mgcv::bam(
+  formula = 
+    falciparum ~ 
+    offset(log(pop2015)) + 
+    s(district, bs = "re") +
+    s(reporting_time, by = aet_l06,   bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l06,  bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l06, bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l06,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l06,  bs = "tp", k = 20),
+  family   = nb(),
+  data     = dataset[!is.na(dataset$soilm_l06), ],
+  method   = "fREML",
+  discrete = TRUE
+)
+tictoc::toc()
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l06$converged
+```
+
+```{r message=FALSE, warning=FALSE}
+summary.gam(falciparum_tvcm_l06)
+```
+
+```{r message=FALSE, warning=FALSE}
+gam.check(falciparum_tvcm_l06)
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l06$aic
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+plot_falciparum_tvcm_l06 <- plot.gam(falciparum_tvcm_l06)
+```
+
+Model with lag = 12 months.
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("GAM model fitting")
+falciparum_tvcm_l12 <- mgcv::bam(
+  formula = 
+    falciparum ~ 
+    offset(log(pop2015)) + 
+    s(district, bs = "re") +
+    s(reporting_time, by = aet_l12,   bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l12,  bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l12, bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l12,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l12,  bs = "tp", k = 20),
+  family   = nb(),
+  data     = dataset[!is.na(dataset$soilm_l12), ],
+  method   = "fREML",
+  discrete = TRUE
+)
+tictoc::toc()
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l12$converged
+```
+
+```{r message=FALSE, warning=FALSE}
+summary.gam(falciparum_tvcm_l12)
+```
+
+```{r message=FALSE, warning=FALSE}
+gam.check(falciparum_tvcm_l12)
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l12$aic
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+plot_falciparum_tvcm_l12 <- plot.gam(falciparum_tvcm_l12)
+```
+
+Model with all lag features.
+
+```{r message=FALSE, warning=FALSE}
+tictoc::tic("GAM model fitting")
+falciparum_tvcm_l <- mgcv::bam(
+  formula = 
+    falciparum ~ 
+    offset(log(pop2015)) + 
+    s(district, bs = "re") +
+    s(reporting_time, by = aet_l01,   bs = "tp", k = 20) +
+    s(reporting_time, by = aet_l03,   bs = "tp", k = 20) +
+    s(reporting_time, by = aet_l06,   bs = "tp", k = 20) +
+    s(reporting_time, by = aet_l12,   bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l01,  bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l03,  bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l06,  bs = "tp", k = 20) +
+    s(reporting_time, by = prcp_l12,  bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l01, bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l03, bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l06, bs = "tp", k = 20) +
+    s(reporting_time, by = soilm_l12, bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l01,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l03,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l06,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmax_l12,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l01,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l03,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l06,  bs = "tp", k = 20) +
+    s(reporting_time, by = tmin_l12,  bs = "tp", k = 20),
+  family   = nb(),
+  data     = dataset[!is.na(dataset$soilm_l12), ],
+  method   = "fREML",
+  discrete = TRUE
+)
+tictoc::toc()
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l$converged
+```
+
+```{r message=FALSE, warning=FALSE}
+summary.gam(falciparum_tvcm_l)
+```
+
+```{r message=FALSE, warning=FALSE}
+gam.check(falciparum_tvcm_l)
+```
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l$aic
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+plot_falciparum_tvcm_l <- plot.gam(falciparum_tvcm_l)
+```
+
+#### Time-varying coefficients plots
+
+Model with no lag features.
+
+```{r message=FALSE, warning=FALSE}
+falciparum_ylim <- c(-3, 2)
+
+falciparum_tvcm_labels <- c(
+    "Actual Evapotranspiration",
+    "Precipitation",
+    "Soil Moisture",
+    "Max Temperature",
+    "Min Temperature"
+  )
+
+plot_tvcm(plot_falciparum_tvcm, falciparum_tvcm_labels, falciparum_ylim)
+```
+
+Model with lag = 1 month.
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l01_labels <- c(
+    "Actual Evapotranspiration (lag = 1)",
+    "Precipitation (lag = 1)",
+    "Soil Moisture (lag = 1)",
+    "Max Temperature (lag = 1)",
+    "Min Temperature (lag = 1)"
+  )
+
+plot_tvcm(plot_falciparum_tvcm_l01, falciparum_tvcm_l01_labels, falciparum_ylim)
+```
+
+Model with lag = 3 months.
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l03_labels <- c(
+    "Actual Evapotranspiration (lag = 3)",
+    "Precipitation (lag = 3)",
+    "Soil Moisture (lag = 3)",
+    "Max Temperature (lag = 3)",
+    "Min Temperature (lag = 3)"
+  )
+
+plot_tvcm(plot_falciparum_tvcm_l03, falciparum_tvcm_l03_labels, falciparum_ylim)
+```
+
+Model with lag = 6 months.
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l06_labels <- c(
+    "Actual Evapotranspiration (lag = 6)",
+    "Precipitation (lag = 6)",
+    "Soil Moisture (lag = 6)",
+    "Max Temperature (lag = 6)",
+    "Min Temperature (lag = 6)"
+  )
+
+plot_tvcm(plot_falciparum_tvcm_l06, falciparum_tvcm_l06_labels, falciparum_ylim)
+```
+
+Model with lag = 12 months.
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l12_labels <- c(
+    "Actual Evapotranspiration (lag = 12)",
+    "Precipitation (lag = 12)",
+    "Soil Moisture (lag = 12)",
+    "Max Temperature (lag = 12)",
+    "Min Temperature (lag = 12)"
+  )
+
+plot_tvcm(plot_falciparum_tvcm_l12, falciparum_tvcm_l12_labels, falciparum_ylim)
+```
+
+Model with all lag features.
+
+```{r message=FALSE, warning=FALSE}
+falciparum_tvcm_l_labels <- c(
+    "Actual Evapotranspiration (lag = 1)",
+    "Actual Evapotranspiration (lag = 3)",
+    "Actual Evapotranspiration (lag = 6)",
+    "Actual Evapotranspiration (lag = 12)",
+    "Precipitation (lag = 1)",
+    "Precipitation (lag = 3)",
+    "Precipitation (lag = 6)",
+    "Precipitation (lag = 12)",
+    "Soil Moisture (lag = 1)",
+    "Soil Moisture (lag = 3)",
+    "Soil Moisture (lag = 6)",
+    "Soil Moisture (lag = 12)",
+    "Max Temperature (lag = 1)",
+    "Max Temperature (lag = 3)",
+    "Max Temperature (lag = 6)",
+    "Max Temperature (lag = 12)",
+    "Min Temperature (lag = 1)",
+    "Min Temperature (lag = 3)",
+    "Min Temperature (lag = 6)",
+    "Min Temperature (lag = 12)"
+  )
+
+plot_tvcm(plot_falciparum_tvcm_l[1:5], falciparum_tvcm_l_labels[1:5], falciparum_ylim)
+```
+
+```{r message=FALSE, warning=FALSE}
+plot_tvcm(plot_falciparum_tvcm_l[5:9], falciparum_tvcm_l_labels[5:9], falciparum_ylim)
+```
+
+```{r message=FALSE, warning=FALSE}
+plot_tvcm(plot_falciparum_tvcm_l[9:13], falciparum_tvcm_l_labels[9:13], c(-5, 5))
+```
+
+```{r message=FALSE, warning=FALSE}
+plot_tvcm(plot_falciparum_tvcm_l[13:17], falciparum_tvcm_l_labels[13:17], falciparum_ylim)
+```
+
+```{r message=FALSE, warning=FALSE}
+plot_tvcm(plot_falciparum_tvcm_l[17:21], falciparum_tvcm_l_labels[17:21], falciparum_ylim)
+```
+
+
+
+
+
+
+
+
 

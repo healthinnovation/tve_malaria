@@ -1,0 +1,227 @@
+---
+title: "Data Wrangling"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    fig_width: 12
+    fig_height: 10
+    code_folding: hide
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r message=FALSE, warning=FALSE}
+library(readr, warn.conflicts = FALSE)
+library(lubridate, warn.conflicts = FALSE)
+library(skimr)
+library(tibble)
+```
+
+# Data loading 
+
+Create csv. file path. 
+
+```{r infile-path, echo=TRUE, message=FALSE, warning=FALSE}
+# use here package
+raw_data_path <- file.path("../data/raw/")
+infile_name   <- "malaria-monthly-cases-district-loreto"
+infile        <- paste(infile_name, ".csv", sep = "")
+infile_path   <- file.path(raw_data_path, infile)
+```
+
+```{r outfile_path}
+processed_data_path <- file.path("../data/processed/")
+outfile_name        <- "malaria-monthly-cases-district-loreto"
+outfile             <- paste("pro_", outfile_name, ".csv", sep = "")
+outfile_path        <- file.path(processed_data_path, outfile)
+```
+
+Define data types for columns.
+
+```{r column-names, message=FALSE, warning=FALSE}
+# Column names
+col_names <- c(
+  "district",
+  "year",
+  "month",
+  "falciparum",
+  "vivax",
+  "aet",
+  "prcp",
+  "q",
+  "soilm",
+  "tmax",
+  "tmin",
+  "water_deficit",
+  "loss",
+  "loss_km2",
+  "cum_loss_km2",
+  "diag",
+  "enviro",
+  "nets",
+  "workers",
+  "pamafro",
+  "pop2015",
+  "province",
+  "region",
+  "id_district"
+)
+```
+
+```{r column-types}
+# Column types
+col_types <- 
+  readr::cols(
+    district      = col_character(),
+    year          = col_integer(),
+    month         = col_integer(),
+    falciparum    = col_integer(),
+    vivax         = col_integer(),
+    aet           = col_double(),
+    prcp          = col_double(),
+    q             = col_double(),
+    soilm         = col_double(),
+    tmax          = col_double(),
+    tmin          = col_double(),
+    water_deficit = col_double(),
+    loss          = col_double(),
+    loss_km2      = col_double(),
+    cum_loss_km2  = col_double(),
+    diag          = col_integer(),
+    enviro        = col_integer(),
+    nets          = col_integer(),
+    workers       = col_integer(),
+    pamafro       = col_integer(),
+    pop2015       = col_integer(),
+    province      = col_character(),
+    region        = col_character(),
+    id_district   = col_character()
+  )
+```
+
+Reading csv. file.
+
+```{r read-file, message=FALSE, warning=FALSE}
+dataset <- 
+  readr::read_csv(
+    file      = infile_path,
+    col_names = col_names,
+    col_types = col_types,
+    skip      = 1,
+    locale    = locale(encoding = "UTF-8")
+  )
+```
+
+## Data validation 
+
+Inspect data.
+
+```{r inspect, include=FALSE}
+# View(dataset)
+```
+
+```{r}
+head(dataset)
+```
+
+Check data structure.
+
+```{r data-structure, include=FALSE, message=FALSE, warning=FALSE}
+str(dataset)
+```
+
+Summarize
+
+```{r summary}
+skimr::skim(dataset)
+```
+
+```{r message=FALSE, warning=FALSE}
+# TODO Potential function
+cat_cols <- c()
+
+for (col in names(dataset)) {
+  if (is.character(dataset[[col]])) {
+    cat_cols <- c(cat_cols, col)
+  }
+}
+
+for (col in cat_cols) {
+  cat(
+    "-",
+    col, 
+    length(unique(dataset[[col]])), 
+    "\n",
+    unique(dataset[[col]]),
+    "\n"
+  )
+}
+```
+
+# Data preparation
+
+```{r replace-province}
+processed_dataset <- tibble::tibble(dataset)
+
+processed_dataset$province <- replace(
+  dataset$province,
+  dataset$province == "DATEN DEL MARAÑON",
+  "DATEM DEL MARAÑON"
+)
+```
+
+```{r check-replace}
+unique(processed_dataset$province)
+```
+
+Create a reporting date features in datetime format using `year` and `month` columns.
+
+```{r make-datetime, message=FALSE, warning=FALSE}
+processed_dataset$dttm <- lubridate::make_datetime(
+  year  = dataset$year,
+  month = dataset$month,
+  day   = 1L
+)
+```
+
+```{r encode-dttm}
+processed_dataset$time <- as.numeric(processed_dataset$dttm)
+```
+
+Column subset for analysis
+
+```{r}
+col_analysis <- c(
+  "district",
+  "year",
+  "month",
+  "falciparum",
+  "vivax",
+  "aet",
+  "prcp",
+  "q",
+  "soilm",
+  "tmax",
+  "tmin",
+  "pop2015",
+  "province",
+  "region",
+  "dttm",
+  "time"
+)
+
+processed_dataset <- processed_dataset[, col_analysis]
+```
+
+Inspect processed data set
+
+```{r}
+head(processed_dataset)
+```
+
+# Export processed data
+
+```{r}
+readr::write_csv(processed_dataset, outfile_path)
+```

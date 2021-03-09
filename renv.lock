@@ -95,10 +95,10 @@
     },
     "Rcpp": {
       "Package": "Rcpp",
-      "Version": "1.0.5",
+      "Version": "1.0.6",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "125dc7a0ed375eb68c0ce533b48d291f"
+      "Hash": "dbb5e436998a7eba5a9d682060533338"
     },
     "RcppArmadillo": {
       "Package": "RcppArmadillo",
@@ -282,6 +282,13 @@
       "Repository": "CRAN",
       "Hash": "9267f5dab59a4ef44229858a142bded1"
     },
+    "classInt": {
+      "Package": "classInt",
+      "Version": "0.4-3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "17bdfa3c51df4a6c82484d13b11fb380"
+    },
     "cli": {
       "Package": "cli",
       "Version": "2.1.0",
@@ -340,10 +347,15 @@
     },
     "cowplot": {
       "Package": "cowplot",
-      "Version": "1.1.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "870b41daf1a4c3640f2e3407a40c31b9"
+      "Version": "1.1.1",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "cowplot",
+      "RemoteUsername": "wilkelab",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "555c9ae5d6cc3d261756f22112df0db316521e71",
+      "Hash": "41dc2a71d05252c75604a40fde3b2eba"
     },
     "cpp11": {
       "Package": "cpp11",
@@ -421,6 +433,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "d0509913b27ea898189ee664b6030dc2"
+    },
+    "e1071": {
+      "Package": "e1071",
+      "Version": "1.7-4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "7e9462e3e3e565f51fbec181dfcab890"
     },
     "ellipsis": {
       "Package": "ellipsis",
@@ -527,6 +546,25 @@
       "Repository": "CRAN",
       "Hash": "4d243a9c10b00589889fe32314ffd902"
     },
+    "geofacet": {
+      "Package": "geofacet",
+      "Version": "0.2.0",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "geofacet",
+      "RemoteUsername": "hafen",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "37be2b8f2bc6477dfaea3cb68898982423cdb2c9",
+      "Hash": "33bc1425ba0fc6a2aa8e4c8691f08d74"
+    },
+    "geogrid": {
+      "Package": "geogrid",
+      "Version": "0.1.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "658b19da952887d2b292e1797b5f2dca"
+    },
     "ggplot2": {
       "Package": "ggplot2",
       "Version": "3.3.2",
@@ -551,9 +589,14 @@
     "ggsci": {
       "Package": "ggsci",
       "Version": "2.9",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "81ccb8213ed592598210afd10c3a5936"
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "ggsci",
+      "RemoteUsername": "nanxstats",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "9ede11b3d8a62727446d74f2cdd55dea3ed3e8c6",
+      "Hash": "4b00283aed4b3d1abb7ce48b3845dcea"
     },
     "ggsignif": {
       "Package": "ggsignif",
@@ -596,6 +639,18 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "f5f1e1d617d6fd9c67efa227f96d5404"
+    },
+    "gratia": {
+      "Package": "gratia",
+      "Version": "0.5.1.9000",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "gratia",
+      "RemoteUsername": "gavinsimpson",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "a36eeef2ac224dd0e73f1c27fa0accea69a9cb07",
+      "Hash": "535a6bb8ffbc76024f12db57b675bfa8"
     },
     "gridExtra": {
       "Package": "gridExtra",
@@ -667,6 +722,13 @@
       "Repository": "CRAN",
       "Hash": "a525aba14184fec243f9eaec62fbed43"
     },
+    "imguR": {
+      "Package": "imguR",
+      "Version": "1.0.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "f6deba2c922290384e51a5176dea7ea8"
+    },
     "ipred": {
       "Package": "ipred",
       "Version": "0.9-9",
@@ -694,6 +756,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "7eb42c3bb09e2019b97de69d2ea9dfff"
+    },
+    "jpeg": {
+      "Package": "jpeg",
+      "Version": "0.1-8.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "bc316c003aba520fc73d70ad53b5fc36"
     },
     "jsonlite": {
       "Package": "jsonlite",
@@ -856,6 +925,13 @@
       "Repository": "CRAN",
       "Hash": "6dfe8bf774944bd5595785e3229d8771"
     },
+    "mvnfast": {
+      "Package": "mvnfast",
+      "Version": "0.2.5.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "760c2afbd323d8d31d527d9360225e35"
+    },
     "nlme": {
       "Package": "nlme",
       "Version": "3.1-150",
@@ -912,6 +988,13 @@
       "Repository": "CRAN",
       "Hash": "bbf1e5cf8653a539e4659c8c40f17b72"
     },
+    "patchwork": {
+      "Package": "patchwork",
+      "Version": "1.1.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "c446b30cb33ec125ff02588b60660ccb"
+    },
     "pbkrtest": {
       "Package": "pbkrtest",
       "Version": "0.4-8.6",
@@ -960,6 +1043,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "ec0e5ab4e5f851f6ef32cd1d1984957f"
+    },
+    "png": {
+      "Package": "png",
+      "Version": "0.1-7",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "03b7076c234cb3331288919983326c55"
     },
     "polynom": {
       "Package": "polynom",
@@ -1059,6 +1149,18 @@
       "Repository": "CRAN",
       "Hash": "1b701a1bff9816b235d40ea794aacd9d"
     },
+    "qwraps2": {
+      "Package": "qwraps2",
+      "Version": "0.5.0",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "qwraps2",
+      "RemoteUsername": "dewittpe",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "56605b022e931d3b1e005269acc5382e212acb82",
+      "Hash": "7999f62c044b040cc64e70888067806e"
+    },
     "readr": {
       "Package": "readr",
       "Version": "1.4.0",
@@ -1108,6 +1210,13 @@
       "Repository": "CRAN",
       "Hash": "398cc1ea892e1aade66d1ecbb2874d24"
     },
+    "repr": {
+      "Package": "repr",
+      "Version": "1.1.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "4e614ef02b992c8f429a359dae976f93"
+    },
     "reprex": {
       "Package": "reprex",
       "Version": "0.3.0",
@@ -1121,6 +1230,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "0f4d941129e00ed34a7d192b1da7ccef"
+    },
+    "rgeos": {
+      "Package": "rgeos",
+      "Version": "0.5-5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "94a44c3f0d49ceb80c385610696873ca"
     },
     "riingo": {
       "Package": "riingo",
@@ -1138,10 +1254,10 @@
     },
     "rlang": {
       "Package": "rlang",
-      "Version": "0.4.8",
+      "Version": "0.4.10",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "843a6af51414bce7f8a8e372f11d6cd0"
+      "Hash": "599df23c40a4fce9c7b4764f28c37857"
     },
     "rmarkdown": {
       "Package": "rmarkdown",
@@ -1149,6 +1265,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "20a0a94af9e8f7040510447763aab3e9"
+    },
+    "rnaturalearth": {
+      "Package": "rnaturalearth",
+      "Version": "0.1.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "946d1b43d7aba91dfa804f02302a5125"
     },
     "rpart": {
       "Package": "rpart",
@@ -1213,6 +1336,25 @@
       "Repository": "CRAN",
       "Hash": "d972f50a1404cf4c413f6c3ca29efc59"
     },
+    "sf": {
+      "Package": "sf",
+      "Version": "0.9-7",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "9d6831c4c002137d99be6b946ac9da07"
+    },
+    "skimr": {
+      "Package": "skimr",
+      "Version": "2.1.2",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "skimr",
+      "RemoteUsername": "ropensci",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "4fd56aab1fd49128de49467b62fce30acce1bf51",
+      "Hash": "53b95386f4a9aa2849816c7e365271ce"
+    },
     "slider": {
       "Package": "slider",
       "Version": "0.1.5",
@@ -1233,6 +1375,19 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "e0485290545c0e768c2b50390114da1f"
+    },
+    "splitTools": {
+      "Package": "splitTools",
+      "Version": "0.3.1",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "splitTools",
+      "RemoteUsername": "mayer79",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "c2d129cec49978e77a36e9e4d6ede6ad04f38358",
+      "RemoteSubdir": "release/splitTools",
+      "Hash": "90c3ad57e895e232fd5e1114d659be60"
     },
     "statmod": {
       "Package": "statmod",
@@ -1351,6 +1506,13 @@
       "Repository": "CRAN",
       "Hash": "35ddfebb7e520955418f9dde02ca345d"
     },
+    "units": {
+      "Package": "units",
+      "Version": "0.6-7",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "4a3df844d6d35ca2ba2b7ba95446b955"
+    },
     "urca": {
       "Package": "urca",
       "Version": "1.3-0",
@@ -1416,10 +1578,10 @@
     },
     "xfun": {
       "Package": "xfun",
-      "Version": "0.19",
+      "Version": "0.21",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "a42372606cb76f34da9d090326e9f955"
+      "Hash": "f3ddcca198959a42e8cb6b06c30d4f1e"
     },
     "xml2": {
       "Package": "xml2",

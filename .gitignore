@@ -2,5 +2,5 @@
 .Rhistory
 .RData
 .Ruserdata
+data/processed/*csv
 renv/library
-.DS_Store

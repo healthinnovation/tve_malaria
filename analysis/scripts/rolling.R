@@ -7,6 +7,7 @@ library(slider)
 library(purrr)
 library(ggpubr)
 library(corrplot)
+library(count)
 
 # Carga
 dt_final<-read.csv("./_data/dt_final.csv")
@@ -59,13 +60,30 @@ dt_final %>%
   geom_line(aes(y = vivax, colour = "vivax")) +
   facet_wrap(.~NOMBDIST, scales = "free")
 
+#grafico de densidad Falcuparum
+dt_final %>% 
+  dplyr::select(NOMBDIST, fecha, falciparum, vivax) %>% 
+  ggplot() +
+  geom_histogram(aes(x = falciparum))
+
+plot(table(dt_final$falciparum))
+
+#grafico de densidad Vivax
+dt_final %>% 
+  dplyr::select(NOMBDIST, fecha, falciparum, vivax) %>% 
+  ggplot() +
+  geom_histogram(aes(x = vivax))
+
+
+
 # Modelo Poisson
 p <- glm(falciparum ~ aet + prcp + soilm + tmax, data = dt_final, family = poisson(link = "log"))
 summary(p)
 logLik(p)
+AIC(p)
 
 # Modelo Binomial Negativo
-nb <- glm.nb(falciparum ~ aet + prcp + soilm + tmax, data = dt_final)
+nb <- glm.nb(falciparum ~ aet + prcp + soilm + tmax , data = dt_final)
 summary(nb)$coefficients[2:5,1]
 summary(nb)$coefficients[2:5,2]
 typeof(x) 
@@ -73,12 +91,24 @@ matrix(x)
 nb$coefficients
 logLik(nb)
 confint(nb)
+summary(nb)
+AIC(nb)
+
+# Modelo Inflacion Cero
+z <- zeroinfl(falciparum ~ aet + prcp + soilm + tmax, data = dt_final, dist = "negbin")
+summary(z)
+coef(z)
+logLik(z)
+AIC(z)
 
 # Modelo Hurdle
 h <- hurdle(falciparum ~ aet + prcp + soilm + tmax, data = dt_final, dist = "negbin")
 summary(h)
 coef(h)
 logLik(h)
+AIC(h)
+
+
 
 # Rolling regression binomial negativa
 monthly_model <- function(data) {
@@ -96,6 +126,7 @@ monthly_model <- function(data) {
   )
 }
 
+## Ventanas de 12 meses
 dt_final %>% 
   summarise(
     slide_period_dfr(
@@ -136,6 +167,7 @@ dt_final %>%
     )
   }
 
+## Ventanas de 18 meses
 dt_final %>% 
   summarise(
     slide_period_dfr(
@@ -176,7 +208,7 @@ dt_final %>%
     )
   }
 
-
+## Ventanas de 24 meses
 dt_final %>% 
   summarise(
     slide_period_dfr(
@@ -314,7 +346,7 @@ monthly_model <- function(data) {
     promedios = c(mean(data$aet),mean(data$prcp),mean(data$soilm),mean(data$tmax))
   )
 }
-
+# 
 dt_final %>% 
   dplyr::group_by(NOMBDIST) %>% 
   filter(!NOMBDIST %in% c("ALTO NANAY","ALTO TAPICHE","BALSAPUERTO","BARRANCA","BELEN","CAHUAPANAS","CAPELO", # PROBLEMA: todos los distritos tienen mucho cantidad de 0, para falciparum o para vivax

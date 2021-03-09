@@ -3869,6 +3869,329 @@ plot_tvcm(
 )
 ```
 
+# Model predictions
+
+```{r}
+loreto_grid <- data.frame(
+  row  = c(2, 3, 3, 3, 3, 4, 4, 5) - 1,
+  col  = c(3, 2, 4, 1, 3, 2, 3, 2),
+  code = c("MA", "LO", "PU", "DM", "RC", "AA", "RE", "UC"),
+  name = c(
+    "MAYNAS", 
+    "LORETO", 
+    "PUTUMAYO", 
+    "DATEM DEL MARAÑON", 
+    "MARISCAL RAMON CASTILLA", 
+    "ALTO AMAZONAS", 
+    "REQUENA", 
+    "UCAYALI"
+  ),
+  stringsAsFactors = FALSE
+)
+```
+
+## P. vivax
+
+```{r}
+vivax_tvcm_10_pred <- mgcv::predict.bam(
+  vivax_tvcm_10,
+  dat_lagged,
+  type   = "response",
+  se.fit = TRUE
+)
+
+vivax_scm_10_pred <- mgcv::predict.bam(
+  vivax_scm_10,
+  dat_lagged,
+  type   = "response",
+  se.fit = TRUE
+)
+```
+
+```{r}
+dat_lagged$vivax_tvcm_fit <- vivax_tvcm_10_pred$fit
+dat_lagged$vivax_scm_fit <- vivax_scm_10_pred$fit
+```
+
+```{r}
+dat_lagged %>% 
+  dplyr::group_by(province, year, month) %>% 
+  dplyr::summarise(
+    vivax          = sum(vivax),
+    vivax_tvcm_fit = sum(vivax_tvcm_fit),
+    vivax_scm_fit  = sum(vivax_scm_fit),
+    pop            = sum(pop2015)
+  ) %>% 
+  dplyr::mutate(
+    ir_vivax          = vivax / pop,
+    ir_vivax_tvcm_fit = vivax_tvcm_fit / pop,
+    ir_vivax_scm_fit  = vivax_scm_fit / pop
+  ) %>% 
+  dplyr::group_by(province, year) %>% 
+  dplyr::summarise(
+    air_vivax          = 1000 * mean(ir_vivax),
+    air_vivax_tvcm_fit = 1000 * mean(ir_vivax_tvcm_fit),
+    air_vivax_scm_fit  = 1000 * mean(ir_vivax_scm_fit)
+  ) -> df_annual_vivax_fit_summary
+```
+
+```{r}
+df_annual_vivax_fit_summary
+```
+
+```{r}
+df_annual_vivax_fit_summary %>% 
+  tidyr::pivot_longer(
+    cols      = c(air_vivax, air_vivax_tvcm_fit, air_vivax_scm_fit),
+    names_to  = "response",
+    values_to = "value"
+  ) %>% 
+  dplyr::mutate(
+    response = factor(
+      x      = response, 
+      levels = c("air_vivax", "air_vivax_tvcm_fit", "air_vivax_scm_fit"), 
+      labels = c("Observed", "Fitted (TVCM)", "Fitted (SCM)")
+    )
+  ) -> df_annual_vivax_fit_summary_long
+```
+
+```{r}
+dat_lagged %>% 
+  dplyr::group_by(province, year, month) %>% 
+  dplyr::summarise(
+    vivax = sum(vivax),
+    pop   = sum(pop2015)
+  ) %>% 
+  dplyr::mutate(
+    ir_vivax = 1000 * (vivax / pop)
+  ) -> df_monthly_vivax_summary
+```
+
+```{r message=FALSE, fig.height=8, fig.width=12}
+plot_air_vivax_fit_province <- ggplot(df_annual_vivax_fit_summary_long) +
+  geom_line(
+    mapping  = aes(x = year, y = value, color = response),
+    size     = 1
+  ) +
+  scale_color_manual(values = c("#000000", "#00A087FF", "#3C5488FF")) +
+  geom_point(
+    data    = df_monthly_vivax_summary,
+    mapping = aes(x = year, y = ir_vivax),
+    size    = 0.05,
+    alpha   = 0.6
+  ) +
+  geofacet::facet_geo(~ province, grid = loreto_grid, label = "name") +
+  geom_rect(
+    data = tibble::tibble(start = 2005, end = 2010),
+    mapping = aes(xmin = start, xmax = end), 
+    ymin    = -100, 
+    ymax    = 100,
+    alpha   = 0.2
+  ) +
+  geom_vline(xintercept = c(2005, 2010), linetype = "dashed", alpha = 0.6) +
+  scale_x_continuous(n.breaks = 5) +
+  labs(y = "Incidence rate", x = NULL) +
+  theme(legend.position = "top", legend.title = element_blank())
+
+show(plot_air_vivax_fit_province)
+```
+
+## P. falciparum
+
+```{r}
+falciparum_tvcm_10_pred <- mgcv::predict.bam(
+  falciparum_tvcm_10,
+  dat_lagged,
+  type   = "response",
+  se.fit = TRUE
+)
+
+falciparum_scm_10_pred <- mgcv::predict.bam(
+  falciparum_scm_10,
+  dat_lagged,
+  type   = "response",
+  se.fit = TRUE
+)
+```
+
+```{r}
+dat_lagged$falciparum_tvcm_fit <- falciparum_tvcm_10_pred$fit
+dat_lagged$falciparum_scm_fit <- falciparum_scm_10_pred$fit
+```
+
+```{r}
+dat_lagged %>% 
+  dplyr::group_by(province, year, month) %>% 
+  dplyr::summarise(
+    falciparum          = sum(falciparum),
+    falciparum_tvcm_fit = sum(falciparum_tvcm_fit),
+    falciparum_scm_fit  = sum(falciparum_scm_fit),
+    pop                 = sum(pop2015)
+  ) %>% 
+  dplyr::mutate(
+    ir_falciparum          = falciparum / pop,
+    ir_falciparum_tvcm_fit = falciparum_tvcm_fit / pop,
+    ir_falciparum_scm_fit  = falciparum_scm_fit / pop
+  ) %>% 
+  dplyr::group_by(province, year) %>% 
+  dplyr::summarise(
+    air_falciparum          = 1000 * mean(ir_falciparum),
+    air_falciparum_tvcm_fit = 1000 * mean(ir_falciparum_tvcm_fit),
+    air_falciparum_scm_fit  = 1000 * mean(ir_falciparum_scm_fit)
+  ) -> df_annual_falciparum_fit_summary
+```
+
+```{r}
+df_annual_falciparum_fit_summary
+```
+
+```{r}
+df_annual_falciparum_fit_summary %>% 
+  tidyr::pivot_longer(
+    cols      = c(air_falciparum, air_falciparum_tvcm_fit, air_falciparum_scm_fit),
+    names_to  = "response",
+    values_to = "value"
+  ) %>% 
+  dplyr::mutate(
+    response = factor(
+      x      = response, 
+      levels = c("air_falciparum", "air_falciparum_tvcm_fit", "air_falciparum_scm_fit"), 
+      labels = c("Observed", "Fitted (TVCM)", "Fitted (SCM)")
+    )
+  ) -> df_annual_falciparum_fit_summary_long
+```
+
+```{r}
+dat_lagged %>% 
+  dplyr::group_by(province, year, month) %>% 
+  dplyr::summarise(
+    falciparum = sum(falciparum),
+    pop        = sum(pop2015)
+  ) %>% 
+  dplyr::mutate(
+    ir_falciparum = 1000 * (falciparum / pop)
+  ) -> df_monthly_falciparum_summary
+```
+
+```{r message=FALSE, fig.height=8, fig.width=12}
+plot_air_falciparum_fit_province <- ggplot(df_annual_falciparum_fit_summary_long) +
+  geom_line(
+    mapping  = aes(x = year, y = value, color = response),
+    size     = 1
+  ) +
+  scale_color_manual(values = c("#000000", "#00A087FF", "#3C5488FF")) +
+  geom_point(
+    data    = df_monthly_falciparum_summary,
+    mapping = aes(x = year, y = ir_falciparum),
+    size    = 0.05,
+    alpha   = 0.6
+  ) +
+  geofacet::facet_geo(~ province, grid = loreto_grid, label = "name") +
+  geom_rect(
+    data = tibble::tibble(start = 2005, end = 2010),
+    mapping = aes(xmin = start, xmax = end), 
+    ymin    = -100, 
+    ymax    = 100,
+    alpha   = 0.2
+  ) +
+  geom_vline(xintercept = c(2005, 2010), linetype = "dashed", alpha = 0.6) +
+  scale_x_continuous(n.breaks = 5) +
+  labs(y = "Incidence rate", x = NULL) +
+  theme(legend.position = "top", legend.title = element_blank())
+
+show(plot_air_falciparum_fit_province)
+```
+
+# Model evaluation
+
+## P. vivax
+
+```{r}
+vivax_models <- list(
+  vivax_scm_10,
+  vivax_tvcm_10,
+  vivax_tvc_dlm_10
+)
+
+vivax_model_names <- c("SCM", "TVCM", "TVC-DLM")
+
+n_vivax_models <- length(vivax_models)
+
+aic_vivax <- rep(NA, n_vivax_models)
+oos_dev_vivax <- rep(NA, n_vivax_models)
+preds_vivax <- vector(mode = "list", length = n_vivax_models)
+
+for(i in 1:n_vivax_models) {
+  aic_vivax[i] <- vivax_models[[i]]$aic
+  preds_vivax[[i]] <- mgcv::predict.bam(
+    vivax_models[[i]],
+    test,
+    type = "response"
+  )
+  oos_dev_vivax[i] <- get_oos_dev(
+    vivax_models[[i]],
+    preds_vivax[[i]],
+    test$vivax
+  )
+}
+```
+
+```{r}
+eval_vivax <- tibble::tibble(
+  model   = vivax_model_names,
+  aic     = aic_vivax,
+  oos_dev = oos_dev_vivax
+)
+```
+
+```{r}
+eval_vivax
+```
+
+## P. falciparum
+
+```{r}
+falciparum_models <- list(
+  falciparum_scm_10,
+  falciparum_tvcm_10,
+  falciparum_tvc_dlm_10
+)
+
+falciparum_model_names <- c("SCM", "TVCM", "TVC-DLM")
+
+n_falciparum_models <- length(falciparum_models)
+
+aic_falciparum <- rep(NA, n_falciparum_models)
+oos_dev_falciparum <- rep(NA, n_falciparum_models)
+preds_falciparum <- vector(mode = "list", length = n_falciparum_models)
+
+for(i in 1:n_falciparum_models) {
+  aic_falciparum[i] <- falciparum_models[[i]]$aic
+  preds_falciparum[[i]] <- mgcv::predict.bam(
+    falciparum_models[[i]],
+    test,
+    type = "response"
+  )
+  oos_dev_falciparum[i] <- get_oos_dev(
+    falciparum_models[[i]],
+    preds_falciparum[[i]],
+    test$falciparum
+  )
+}
+```
+
+```{r}
+eval_falciparum <- tibble::tibble(
+  model   = falciparum_model_names,
+  aic     = aic_falciparum,
+  oos_dev = oos_dev_falciparum
+)
+```
+
+```{r}
+eval_falciparum
+```
+
 
 
 

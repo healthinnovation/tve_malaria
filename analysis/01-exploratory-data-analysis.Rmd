@@ -108,6 +108,8 @@ df_malaria_loreto <-
 
 ## Data validation 
 
+TODO: Unique values evaluation.
+
 Check data structure.
 
 ```{r message=FALSE, warning=FALSE}
@@ -141,31 +143,30 @@ TODO: Summarize by districts. `soilm` have the same value for all months in some
 
 ```{r message=FALSE}
 df_malaria_loreto %>% 
-  dplyr::group_by(province, year, district) %>% 
+  dplyr::group_by(province, year, month) %>% 
   dplyr::summarise(
-    falciparum = sum(falciparum),
     vivax      = sum(vivax),
-    pop        = mean(pop2015),
+    falciparum = sum(falciparum),
+    pop        = sum(pop2015),
     aet        = mean(aet),
     prcp       = mean(prcp),
-    soilm      = mean(soilm),
-    tmax       = mean(tmax),
-    tmin       = mean(tmin)
-  ) %>% 
-  dplyr::group_by(province, year) %>% 
-  dplyr::summarise(
-    falciparum = sum(falciparum),
-    vivax      = sum(vivax),
-    pop        = sum(pop),
-    aet        = mean(aet),
-    prcp       = mean(prcp),
-    soilm      = mean(soilm),
+    q          = mean(q),
     tmax       = mean(tmax),
     tmin       = mean(tmin)
   ) %>% 
   dplyr::mutate(
-    ir_falciparum = 1000 * falciparum / (12 * pop),
-    ir_vivax      = 1000 * vivax / (12 * pop)
+    ir_vivax      = vivax / pop,
+    ir_falciparum = falciparum / pop
+  ) %>% 
+  dplyr::group_by(province, year) %>% 
+  dplyr::summarise(
+    air_vivax      = mean(ir_vivax),
+    air_falciparum = mean(ir_falciparum),
+    aet            = mean(aet),
+    prcp           = mean(prcp),
+    q              = mean(q),
+    tmax           = mean(tmax),
+    tmin           = mean(tmin)
   ) -> df_annual_summary
 ```
 
@@ -295,13 +296,20 @@ Year-over-year percentage change of the number of malaria cases reported (x1000)
 df_annual_summary %>% 
   dplyr::group_by(province) %>% 
   dplyr::summarise(
-    mean_sd_ir_falciparum = qwraps2::mean_sd(ir_falciparum, denote_sd = "paren"),
-    mean_sd_ir_vivax      = qwraps2::mean_sd(ir_vivax, denote_sd = "paren"),
-    mean_sd_aet           = qwraps2::mean_sd(aet, denote_sd = "paren"),
-    mean_sd_prcp          = qwraps2::mean_sd(prcp, denote_sd = "paren"),
-    mean_sd_soilm         = qwraps2::mean_sd(soilm, denote_sd = "paren"),
-    mean_sd_tmax          = qwraps2::mean_sd(tmax, denote_sd = "paren"),
-    mean_sd_tmin          = qwraps2::mean_sd(tmin, denote_sd = "paren"),
+    mean_air_vivax      = round(10000 * mean(air_vivax), 2),
+    sd_air_vivax        = round(sd(10000 * air_vivax), 2),
+    mean_air_falciparum = round(10000 * mean(air_falciparum), 2),
+    sd_air_falciparum   = round(sd(10000 * air_falciparum), 2),
+    mean_aet            = round(mean(aet), 2),
+    sd_aet              = round(sd(aet), 2),
+    mean_prcp           = round(mean(prcp), 2),
+    sd_prcp             = round(sd(prcp), 2),
+    mean_q              = round(mean(q), 2),
+    sd_q                = round(sd(q), 2),
+    mean_tmax           = round(mean(tmax), 2),
+    sd_tmax             = round(sd(tmax), 2),
+    mean_tmin           = round(mean(tmin), 2),
+    sd_tmin             = round(sd(tmin), 2)
   ) -> df_annual_summary_province 
 ```
 
@@ -311,14 +319,17 @@ table_01_sketch = htmltools::withTags(
     class = "display",
     thead(
       tr(
-        th("Province"),
-        th("IR (P. falciparum)"),
-        th("IR (P. vivax)"),
-        th("Actual Evapotranspiration"),
-        th("Precipitation"),
-        th("Soil Moisture"),
-        th("Max Temperature"),
-        th("Min Temperature")
+        th(rowspan = 2, "Province"),
+        th(colspan = 2, "AIR (P. vivax)"),
+        th(colspan = 2, "IR (P. falciparum)"),
+        th(colspan = 2, "Actual Evapotranspiration"),
+        th(colspan = 2, "Precipitation"),
+        th(colspan = 2, "Runoff"),
+        th(colspan = 2, "Max Temperature"),
+        th(colspan = 2, "Min Temperature")
+      ),
+      tr(
+        lapply(rep(c("Mean", "SD"), 7), th)
       )
     )
   )

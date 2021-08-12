@@ -31,7 +31,6 @@ library(rmcorr)
 library(DT)
 library(htmltools)
 library(stringr)
-
 ```
 
 # Data loading 
@@ -39,10 +38,10 @@ library(stringr)
 Create csv. file path. 
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
-processed_data_path <- file.path("../data/processed/") 
-file_name           <- "pro_malaria-monthly-cases-district-loreto"
-file                <- paste(file_name, ".csv", sep = "")
-file_path           <- file.path(processed_data_path, file) 
+processed_data_path <- file.path("../data/processed/")
+file_name <- "pro_malaria-monthly-cases-district-loreto"
+file <- paste(file_name, ".csv", sep = "")
+file_path <- file.path(processed_data_path, file)
 ```
 
 Define data types for columns.
@@ -71,37 +70,37 @@ col_names <- c(
 
 ```{r}
 # Column types
-col_types <- 
+col_types <-
   readr::cols(
-    district      = col_character(),
-    year          = col_integer(),
-    month         = col_integer(),
-    falciparum    = col_integer(),
-    vivax         = col_integer(),
-    aet           = col_double(),
-    prcp          = col_double(),
-    q             = col_double(),
-    soilm         = col_double(),
-    tmax          = col_double(),
-    tmin          = col_double(),
-    pop2015       = col_integer(),
-    province      = col_character(),
-    region        = col_character(),
-    dttm          = col_datetime(),
-    time          = col_integer()
+    district = col_character(),
+    year = col_integer(),
+    month = col_integer(),
+    falciparum = col_integer(),
+    vivax = col_integer(),
+    aet = col_double(),
+    prcp = col_double(),
+    q = col_double(),
+    soilm = col_double(),
+    tmax = col_double(),
+    tmin = col_double(),
+    pop2015 = col_integer(),
+    province = col_character(),
+    region = col_character(),
+    dttm = col_datetime(),
+    time = col_integer()
   )
 ```
 
 Reading csv. file.
 
 ```{r message=FALSE, warning=FALSE}
-df_malaria_loreto <- 
+df_malaria_loreto <-
   readr::read_csv(
-    file      = file_path,
+    file = file_path,
     col_names = col_names,
     col_types = col_types,
-    skip      = 1,
-    locale    = locale(encoding = "UTF-8")
+    skip = 1,
+    locale = locale(encoding = "UTF-8")
   )
 ```
 
@@ -131,8 +130,8 @@ Create a data frame with the start and end dates of PAMAFRO intervention.
 
 ```{r message=FALSE, warning=FALSE}
 df_pamafro_period <- tibble::tibble(
-  start = lubridate::make_datetime(year = 2005, month = 10, day = 1L), 
-  end   = lubridate::make_datetime(year = 2010, month = 09, day = 1L)
+  start = lubridate::make_datetime(year = 2005, month = 10, day = 1L),
+  end = lubridate::make_datetime(year = 2010, month = 09, day = 1L)
 )
 ```
 
@@ -194,61 +193,61 @@ df_malaria_loreto %>%
 ```
 
 ```{r message=FALSE}
-df_malaria_loreto %>% 
+df_malaria_loreto %>%
   mutate(
     aet = scales::rescale(aet, to = c(0, 1)),
     prcp = scales::rescale(prcp, to = c(0, 1)),
     q = scales::rescale(q, to = c(0, 1)),
     tmax = scales::rescale(tmax, to = c(0, 1)),
     tmin = scales::rescale(tmin, to = c(0, 1)),
-  ) %>% 
-  dplyr::group_by(year, month) %>% 
+  ) %>%
+  dplyr::group_by(year, month) %>%
   dplyr::summarise(
-    vivax      = sum(vivax),
+    vivax = sum(vivax),
     falciparum = sum(falciparum),
-    aet        = mean(aet),
-    prcp       = mean(prcp),
-    q          = mean(q),
-    tmax       = mean(tmax),
-    tmin       = mean(tmin)
-  ) %>% 
+    aet = mean(aet),
+    prcp = mean(prcp),
+    q = mean(q),
+    tmax = mean(tmax),
+    tmin = mean(tmin)
+  ) %>%
   dplyr::mutate(
     report_date = lubridate::make_datetime(year = year, month = month, day = 1L)
-  ) %>% 
+  ) %>%
   tidyr::pivot_longer(
-    cols      = c(aet, prcp, q, tmax, tmin),
-    names_to  = "variable",
+    cols = c(aet, prcp, q, tmax, tmin),
+    names_to = "variable",
     values_to = "value"
-  ) %>% 
+  ) %>%
   dplyr::mutate(
     variable = factor(
-      x      = variable, 
-      levels = c("aet", "prcp", "q", "tmax", "tmin"), 
+      x = variable,
+      levels = c("aet", "prcp", "q", "tmax", "tmin"),
       labels = c(
-        "Actual Evapotranspiration", 
-        "Precipitation", 
-        "Runoff", 
-        "Max Temperature", 
+        "Actual Evapotranspiration",
+        "Precipitation",
+        "Runoff",
+        "Max Temperature",
         "Min Temperature"
       )
     )
-  ) %>% 
+  ) %>%
   ggplot() +
   geom_line(
-    mapping  = aes(x = report_date, y = value, color = variable),
-    size     = 1
+    mapping = aes(x = report_date, y = value, color = variable),
+    size = 1
   ) +
   geom_rect(
-    data    = df_pamafro_period,
-    mapping = aes(xmin = start, xmax = end), 
-    ymin    = -1000, 
-    ymax    = 10000,
-    alpha   = 0.2
+    data = df_pamafro_period,
+    mapping = aes(xmin = start, xmax = end),
+    ymin = -1000,
+    ymax = 10000,
+    alpha = 0.2
   ) +
   geom_vline(
-    xintercept = c(df_pamafro_period$start, df_pamafro_period$end), 
-    linetype   = "dashed", 
-    alpha      = 0.6
+    xintercept = c(df_pamafro_period$start, df_pamafro_period$end),
+    linetype = "dashed",
+    alpha = 0.6
   ) +
   geom_hline(mapping = aes(yintercept = 0), alpha = 0.6, linetype = "dashed") +
   scale_y_continuous(limits = c(0, 1)) +
@@ -568,7 +567,7 @@ df_annual_summary_province %>%
 
 ```{r message=FALSE}
 df_annual_summary_v2 %>% 
-  dplyr::group_by(province) %>% 
+  dplyr::group_by(province) %>%
   dplyr::summarise(
     mean_air_vivax      = round(10000 * mean(air_vivax), 2),
     sd_air_vivax        = round(sd(10000 * air_vivax), 2),

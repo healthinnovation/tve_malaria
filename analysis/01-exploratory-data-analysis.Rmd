@@ -18,6 +18,9 @@ library(skimr)
 library(tibble)
 library(lubridate, warn.conflicts = FALSE)
 library(dplyr, warn.conflicts = FALSE)
+library(slider)
+library(scales)
+library(tidyr)
 
 library(ggplot2, warn.conflicts = FALSE)
 ggplot2::theme_set(theme_bw())
@@ -49,57 +52,30 @@ Define data types for columns.
 ```{r message=FALSE, warning=FALSE}
 # Column names
 col_names <- c(
-  "district",
-  "year",
-  "month",
-  "falciparum",
-  "vivax",
-  "aet",
-  "prcp",
-  "q",
-  "soilm",
-  "tmax",
-  "tmin",
-  "pop2015",
-  "province",
-  "region",
-  "dttm",
-  "time"
+  "district", "year", "month", "falciparum", "vivax", "aet", "prcp", "q",
+  "soilm", "tmax", "tmin", "pop2015", "province", "region", "dttm", "time"
 )
 ```
 
 ```{r}
 # Column types
-col_types <-
-  readr::cols(
-    district = col_character(),
-    year = col_integer(),
-    month = col_integer(),
-    falciparum = col_integer(),
-    vivax = col_integer(),
-    aet = col_double(),
-    prcp = col_double(),
-    q = col_double(),
-    soilm = col_double(),
-    tmax = col_double(),
-    tmin = col_double(),
-    pop2015 = col_integer(),
-    province = col_character(),
-    region = col_character(),
-    dttm = col_datetime(),
-    time = col_integer()
-  )
+col_types <- cols(
+  district = col_character(), year = col_integer(), month = col_integer(), 
+  falciparum = col_integer(), vivax = col_integer(), aet = col_double(), 
+  prcp = col_double(), q = col_double(), soilm = col_double(), 
+  tmax = col_double(), tmin = col_double(), pop2015 = col_integer(), 
+  province = col_character(), region = col_character(), dttm = col_datetime(), 
+  time = col_integer()
+)
 ```
 
 Reading csv. file.
 
 ```{r message=FALSE, warning=FALSE}
 df_malaria_loreto <-
-  readr::read_csv(
-    file = file_path,
-    col_names = col_names,
-    col_types = col_types,
-    skip = 1,
+  read_csv(
+    file_path,
+    col_names = col_names, col_types = col_types, skip = 1,
     locale = locale(encoding = "UTF-8")
   )
 ```
@@ -126,12 +102,18 @@ Check data structure
 str(df_malaria_loreto)
 ```
 
+```{r}
+df_malaria_loreto <- 
+  df_malaria_loreto %>% 
+  mutate(province = recode(province, PUTUMAYO = "MAYNAS"))
+```
+
 Create a data frame with the start and end dates of PAMAFRO intervention.
 
 ```{r message=FALSE, warning=FALSE}
-df_pamafro_period <- tibble::tibble(
-  start = lubridate::make_datetime(year = 2005, month = 10, day = 1L),
-  end = lubridate::make_datetime(year = 2010, month = 09, day = 1L)
+df_pamafro_period <- tibble(
+  start = make_datetime(year = 2005, month = 10, day = 1L),
+  end = make_datetime(year = 2010, month = 09, day = 1L)
 )
 ```
 
@@ -193,69 +175,77 @@ df_malaria_loreto %>%
 ```
 
 ```{r message=FALSE}
-df_malaria_loreto %>%
-  mutate(
-    aet = scales::rescale(aet, to = c(0, 1)),
-    prcp = scales::rescale(prcp, to = c(0, 1)),
-    q = scales::rescale(q, to = c(0, 1)),
-    tmax = scales::rescale(tmax, to = c(0, 1)),
-    tmin = scales::rescale(tmin, to = c(0, 1)),
-  ) %>%
-  dplyr::group_by(year, month) %>%
-  dplyr::summarise(
-    vivax = sum(vivax),
-    falciparum = sum(falciparum),
-    aet = mean(aet),
-    prcp = mean(prcp),
-    q = mean(q),
-    tmax = mean(tmax),
-    tmin = mean(tmin)
-  ) %>%
-  dplyr::mutate(
-    report_date = lubridate::make_datetime(year = year, month = month, day = 1L)
-  ) %>%
-  tidyr::pivot_longer(
-    cols = c(aet, prcp, q, tmax, tmin),
-    names_to = "variable",
-    values_to = "value"
-  ) %>%
-  dplyr::mutate(
-    variable = factor(
-      x = variable,
-      levels = c("aet", "prcp", "q", "tmax", "tmin"),
-      labels = c(
-        "Actual Evapotranspiration",
-        "Precipitation",
-        "Runoff",
-        "Max Temperature",
-        "Min Temperature"
-      )
-    )
-  ) %>%
-  ggplot() +
-  geom_line(
-    mapping = aes(x = report_date, y = value, color = variable),
-    size = 1
-  ) +
-  geom_rect(
-    data = df_pamafro_period,
-    mapping = aes(xmin = start, xmax = end),
-    ymin = -1000,
-    ymax = 10000,
-    alpha = 0.2
-  ) +
-  geom_vline(
-    xintercept = c(df_pamafro_period$start, df_pamafro_period$end),
-    linetype = "dashed",
-    alpha = 0.6
-  ) +
-  geom_hline(mapping = aes(yintercept = 0), alpha = 0.6, linetype = "dashed") +
-  scale_y_continuous(limits = c(0, 1)) +
-  scale_x_datetime(date_labels = "%Y", date_breaks = "1 year") +
-  ggsci::scale_color_npg() +
-  ggsci::scale_fill_npg() +
-  labs(y = "Number of reported cases", x = NULL) +
-  theme(legend.position = "top", legend.title = element_blank())
+# df_malaria_loreto %>%
+#   dplyr::group_by(year, month) %>%
+#   dplyr::summarise(
+#     vivax = sum(vivax),
+#     falciparum = sum(falciparum),
+#     aet = mean(aet),
+#     prcp = mean(prcp),
+#     q = mean(q),
+#     tmax = mean(tmax),
+#     tmin = mean(tmin),
+#     .groups = "drop"
+#   ) %>%
+#   dplyr::mutate(
+#     report_date = lubridate::make_datetime(year = year, month = month, day = 1L)
+#   ) -> df_agg
+# 
+# df_agg %>% 
+#   mutate(
+#     aet = rescale(aet, to = c(0, 1)),
+#     prcp = rescale(prcp, to = c(0, 1)),
+#     q = rescale(q, to = c(0, 1)),
+#     tmax = rescale(tmax, to = c(0, 1)),
+#     tmin = rescale(tmin, to = c(0, 1))
+#   ) -> df_agg_rescale
+#   
+# 
+# df_agg_rescale %>% 
+#   tidyr::pivot_longer(
+#     cols = c(aet, prcp, q, tmax, tmin),
+#     names_to = "variable",
+#     values_to = "value"
+#   ) %>%
+#   dplyr::mutate(
+#     variable = factor(
+#       x = variable,
+#       levels = c("aet", "prcp", "q", "tmax", "tmin"),
+#       labels = c(
+#         "Actual Evapotranspiration",
+#         "Precipitation",
+#         "Runoff",
+#         "Max Temperature",
+#         "Min Temperature"
+#       )
+#     )
+#   ) -> df_agg_rescale_long
+# 
+# df_agg_rescale_long %>% 
+#   ggplot() +
+#   geom_line(
+#     mapping = aes(x = report_date, y = value, color = variable),
+#     size = 1
+#   ) +
+#   geom_rect(
+#     data = df_pamafro_period,
+#     mapping = aes(xmin = start, xmax = end),
+#     ymin = -1000,
+#     ymax = 10000,
+#     alpha = 0.2
+#   ) +
+#   geom_vline(
+#     xintercept = c(df_pamafro_period$start, df_pamafro_period$end),
+#     linetype = "dashed",
+#     alpha = 0.6
+#   ) +
+#   geom_hline(mapping = aes(yintercept = 0), alpha = 0.6, linetype = "dashed") +
+#   scale_y_continuous(limits = c(0, 1)) +
+#   scale_x_datetime(date_labels = "%Y", date_breaks = "1 year") +
+#   ggsci::scale_color_npg() +
+#   ggsci::scale_fill_npg() +
+#   labs(y = "Number of reported cases", x = NULL) +
+#   theme(legend.position = "top", legend.title = element_blank())
 ```
 
 ```{r message=FALSE}
@@ -328,7 +318,7 @@ loreto_grid <- data.frame(
 
 ## Figure 1
 
-```{r message=FALSE, fig.height=8, fig.width=12}
+```{r message=FALSE, fig.height=8, fig.width=12, warning=FALSE}
 plot_air_province <- 
   ggplot(data = df_annual_summary_long) +
   geofacet::facet_geo(~ province, grid = loreto_grid, label = "name") +
@@ -353,7 +343,7 @@ plot_air_province <-
   labs(y = "Annual incidence rate", x = NULL) +
   theme(legend.position = "top", legend.title = element_blank())
 
-show(plot_air_province)
+plot_air_province
 ```
 
 ```{r message=FALSE}
@@ -370,7 +360,8 @@ df_malaria_loreto %>%
     prcp       = mean(prcp),
     q          = mean(q),
     tmax       = mean(tmax),
-    tmin       = mean(tmin)
+    tmin       = mean(tmin),
+    .groups = "drop"
   ) %>% 
   dplyr::mutate(
     ir_vivax      = vivax / pop,
@@ -384,7 +375,8 @@ df_malaria_loreto %>%
     prcp           = mean(prcp),
     q              = mean(q),
     tmax           = mean(tmax),
-    tmin           = mean(tmin)
+    tmin           = mean(tmin),
+    .groups = "drop"
   ) -> df_annual_summary_v2
 ```
 
@@ -445,9 +437,306 @@ plot_air_province_v2 <-
   ggsci::scale_color_npg() +
   ggsci::scale_fill_npg() +
   labs(y = "Annual incidence rate", x = NULL) +
-  theme(legend.position = "top", legend.title = element_blank())
+  theme(legend.position = "top", legend.title = element_blank(), 
+        text = element_text(size = 16))
 
-show(plot_air_province_v2)
+plot_air_province_v2
+```
+
+```{r}
+pdf("figures/figure-1.pdf", width = 10, height = 7)
+plot_air_province_v2
+dev.off()
+```
+
+
+
+```{r}
+plot_vars_ma <- function(prov, distr = NULL, before) {
+  if (is.null(distr)) {
+    df_ma <-
+      df_malaria_loreto %>%
+      select(-soilm) %>%
+      filter(province == prov) %>%
+      group_by(province, dttm) %>%
+      summarise(
+        across(falciparum:vivax, ~ sum(., na.rm = TRUE)),
+        across(aet:tmin, ~ mean(., na.rm = TRUE)),
+        .groups = "drop"
+      ) %>%
+      arrange(dttm) %>%
+      mutate(
+        across(
+          falciparum:tmin,
+          ~ slide_index_dbl(., dttm, ~ mean(., na.rm = TRUE),
+            .before = months(before), .complete = TRUE
+          )
+        )
+      ) # %>% mutate(across(falciparum:tmin, ~ rescale(., to = c(0, 1))))
+  } else {
+    df_ma <-
+      df_malaria_loreto %>%
+      select(-soilm) %>%
+      filter(province == prov, district == distr) %>%
+      arrange(dttm) %>%
+      mutate(
+        across(
+          falciparum:tmin,
+          ~ slide_index_dbl(., dttm, ~ mean(., na.rm = TRUE),
+            .before = months(before), .complete = TRUE
+          )
+        )
+      ) # %>% mutate(across(falciparum:tmin, ~ rescale(., to = c(0, 1))))
+  }
+
+  df_ma_long <-
+    df_ma %>%
+    pivot_longer(
+      cols = falciparum:tmin, names_to = "variable", values_to = "value"
+    ) %>%
+    mutate(
+      variable = factor(
+        variable,
+        levels = c("falciparum", "vivax", "aet", "prcp", "q", "tmax", "tmin"),
+        labels = c(
+          "P. Falciparum", "P. Vivax", "Actual Evapotranspiration",
+          "Precipitation", "Runoff", "Maximum Temperature",
+          "Minimum Temperature"
+        )
+      )
+    )
+
+  plt_ma <- 
+    df_ma_long %>%
+    ggplot() +
+    facet_wrap(vars(variable), ncol = 2, scales = "free_y") +
+    geom_line(aes(dttm, value, color = variable)) +
+    geom_rect(
+      df_pamafro_period,
+      mapping = aes(xmin = start, xmax = end),
+      ymin = -Inf,
+      ymax = Inf,
+      alpha = 0.2
+    ) +
+    geom_vline(
+      xintercept = c(df_pamafro_period$start, df_pamafro_period$end),
+      linetype = "dashed",
+      alpha = 0.6
+    ) +
+    scale_x_datetime(date_labels = "%Y", date_breaks = "2 year") +
+    scale_color_npg() +
+    scale_fill_npg() +
+    theme(legend.position = "none")
+    
+  if (is.null(distr)) {
+    plt <- plt_ma + labs(y = NULL, x = NULL, title = prov)
+  } else {
+    plt <- plt_ma + labs(y = NULL, x = NULL, title = paste0(prov, ", ", distr))
+  }
+  
+  plt
+}
+```
+
+```{r warning=FALSE}
+plot_vars_ma(prov = "MAYNAS", before = 5)
+```
+
+```{r warning=FALSE}
+provinces <- unique(df_malaria_loreto$province)
+pdf("figures/provinces.pdf")
+for (i in seq_along(provinces)) {
+  print(plot_vars_ma(prov = provinces[i], before = 5))
+}
+dev.off()
+```
+
+```{r}
+plot_vars_prov <- function(prov, before) {
+  df_long <- 
+    df_malaria_loreto %>% 
+    select(-soilm) %>% 
+    pivot_longer(aet:tmin, names_to = "variable", values_to = "value") %>% 
+    mutate(
+      variable = factor(
+        variable,
+        levels = c("aet", "prcp", "q", "tmax", "tmin"),
+        labels = c(
+          "Actual Evapotranspiration","Precipitation", "Runoff", 
+          "Maximum Temperature", "Minimum Temperature"
+        )
+      )
+    )
+  
+  df_ma <-
+    df_malaria_loreto %>%
+    select(-soilm) %>%
+    filter(province == prov) %>%
+    group_by(province, dttm) %>%
+    summarise(across(aet:tmin, ~ mean(., na.rm = TRUE)), .groups = "drop") %>%
+    arrange(dttm) %>%
+    mutate(
+      across(
+        aet:tmin,
+        ~ slide_index_dbl(., dttm, ~ mean(., na.rm = TRUE),
+          .before = months(before), .complete = TRUE
+        )
+      )
+    )
+
+  df_ma_long <-
+    df_ma %>%
+    pivot_longer(aet:tmin, names_to = "variable", values_to = "value") %>%
+    mutate(
+      variable = factor(
+        variable,
+        levels = c("aet", "prcp", "q", "tmax", "tmin"),
+        labels = c(
+          "Actual Evapotranspiration","Precipitation", "Runoff", 
+          "Maximum Temperature", "Minimum Temperature"
+        )
+      )
+    )
+
+  plt_ma <- 
+    df_ma_long %>%
+    ggplot() +
+    facet_wrap(vars(variable), ncol = 2, scales = "free_y") +
+    # geom_point(
+    #   aes(dttm, value), df_long, color = "grey", size = 0.1, alpha = 0.5
+    # ) +
+    geom_line(
+      aes(dttm, value, group = district), df_long, color = "grey", size = 0.1, alpha = 0.5
+    ) +
+    geom_line(aes(dttm, value, color = variable), size = 1) +
+    geom_rect(
+      aes(xmin = start, xmax = end),
+      df_pamafro_period,
+      ymin = -Inf,
+      ymax = Inf,
+      alpha = 0.2
+    ) +
+    geom_vline(
+      xintercept = c(df_pamafro_period$start, df_pamafro_period$end),
+      linetype = "dashed",
+      alpha = 0.6
+    ) +
+    scale_x_datetime(date_labels = "%Y", date_breaks = "2 year") +
+    scale_color_npg() +
+    scale_fill_npg() +
+    theme(legend.position = "none") + 
+    labs(y = NULL, x = NULL, title = str_to_title(prov))
+    
+  plt_ma
+}
+```
+
+```{r}
+plot_vars_prov(prov = "MAYNAS", before = 5)
+```
+
+```{r}
+for (i in seq_along(provinces)) {
+  prov <- provinces[i] %>% str_replace_all(" ", "-") %>% tolower()
+  png(
+    paste0("figures/", prov, ".png"), width = 22, height = 18, units = "cm", 
+    pointsize = 12, res = 300
+  )
+  print(plot_vars_prov(prov = provinces[i], before = 5))
+  dev.off()
+}
+```
+
+
+```{r warning=FALSE}
+for (i in seq_along(provinces)) {
+  districts <- 
+    df_malaria_loreto %>% 
+    filter(province == provinces[i]) %>% 
+    select(district) %>%  
+    unique() %>% 
+    pull()
+  prov <- provinces[i] %>% str_replace_all(" ", "-") %>% tolower()
+  pdf(paste0("figures/", prov, ".pdf"))
+  for (j in seq_along(districts)) {
+    print(plot_vars_ma(prov = provinces[i], distr = districts[j], before = 11))
+  }
+  dev.off()
+}
+```
+
+
+```{r}
+df_pamafro <- 
+  df_malaria_loreto %>% 
+  mutate(
+    period = 
+      ifelse(
+        dttm < df_pamafro_period$start, "before", 
+        ifelse(dttm > df_pamafro_period$end, "after", "during")
+      )
+  ) %>% 
+  mutate(
+    period = factor(period, levels = c("before", "during", "after"))
+  ) %>% 
+  mutate(
+    after = ifelse(period == "after", "yes", "no")
+  )
+```
+
+```{r}
+df_pamafro %>% 
+  select(-c(aet, soilm, q)) %>%
+  # arrange(dttm) %>%
+  # mutate(
+  #   across(
+  #     falciparum:tmin,
+  #     ~ slide_index_dbl(
+  #       ., dttm, ~ mean(., na.rm = TRUE), .before = months(5),
+  #       .complete = TRUE
+  #     )
+  #   )
+  # ) %>%
+  group_by(province, district, after) %>% 
+  summarise(
+    across(prcp:tmin, ~ mean(., na.rm = TRUE)),
+    .groups = "drop"
+  ) %>% 
+  group_by(province, after) %>% 
+  summarise(
+    across(prcp:tmin, ~ max(., na.rm = TRUE)),
+    .groups = "drop"
+  ) %>% 
+  filter(province == "DATEM DEL MARAÑON")
+```
+
+```{r}
+df_malaria_loreto %>% 
+  group_by(province, district, year) %>% 
+  summarise(
+    vivax      = mean(vivax),
+    falciparum = mean(falciparum),
+    pop        = mean(pop2015),
+    aet        = mean(aet),
+    prcp       = mean(prcp),
+    q          = mean(q),
+    tmax       = mean(tmax),
+    tmin       = mean(tmin),
+    .groups = "drop"
+  ) %>% 
+  group_by(province, district) %>% 
+  summarise(
+    air_vivax      = 10000 * (mean(vivax) / mean(pop)),
+    air_falciparum = 10000 * (mean(falciparum) / mean(pop)),
+    aet            = mean(aet),
+    prcp           = mean(prcp),
+    q              = mean(q),
+    tmax           = mean(tmax),
+    tmin           = mean(tmin),
+    pop = mean(pop),
+    .groups = "drop"
+  ) %>% 
+  arrange(desc(air_vivax))
 ```
 
 

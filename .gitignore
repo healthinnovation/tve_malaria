@@ -39,11 +39,11 @@ vignettes/*.pdf
 .Renviron
 
 # renv
-renv/*
+renv/
 !renv/activate.R
 
 # Data
 data/
 
 # HTML
-*.html
+analysis/*.html

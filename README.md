@@ -1,7 +1,7 @@
 Time-Varying Effects of Meteorological Variables on Malaria Epidemiology in the Context of Interrupted Control Efforts in the Amazon Rainforest, 2000–2017
 ================
 <p align="center">
-<img src="analysis/figs/figure-2.png" alt="figure-2" width="500" height="600"/>
+<img src="analysis/figs/fig-2-no-background.png" alt="figure-2" width="500" height="600"/>
 </p>
 
 <p align="center">

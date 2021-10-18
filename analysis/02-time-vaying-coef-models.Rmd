@@ -25,13 +25,12 @@ library(skimr)
 library(tibble)
 library(lubridate)
 library(dplyr)
-library(splitTools)
 library(scales)
 library(DT)
 library(stringr)
 
 # Time series
-library(forecast)
+# library(forecast)
 
 # Plots
 library(ggplot2)
@@ -40,15 +39,15 @@ ggplot2::theme_update(panel.grid = element_blank())
 library(ggsci)
 library(GGally)
 library(DHARMa)
-library(lemon)
+# library(lemon)
 library(grid)
 library(gridExtra)
 library(graphics)
-library(ggtext)
+# library(ggtext)
 
 # GAM
 library(mgcv)
-library(gratia)
+# library(gratia)
 ```
 
 # Data wrangling
@@ -342,16 +341,16 @@ mgcv::summary.gam(vivax_tvcm_5)
 ```
 
 ```{r}
-sim_res_vivax_tvcm_5 <- simulateResiduals(
-  fittedModel = vivax_tvcm_5,
-  integerResponse = TRUE,
-  n = 1000
-)
-plot(sim_res_vivax_tvcm_5)
+# sim_res_vivax_tvcm_5 <- simulateResiduals(
+#   fittedModel = vivax_tvcm_5,
+#   integerResponse = TRUE,
+#   n = 1000
+# )
+# plot(sim_res_vivax_tvcm_5)
 ```
 
 ```{r}
-testDispersion(sim_res_vivax_tvcm_5)
+# testDispersion(sim_res_vivax_tvcm_5)
 ```
 
 ```{r}
@@ -635,19 +634,26 @@ plot_tvcm_by_terms(df_tvcm_5)
 ```
 
 ```{r}
-png(
-  filename  = "figures/figure-2.png", 
-  width     = 18.5, 
-  height    = 22.5, 
-  units     = "cm", 
-  pointsize = 12,
-  res       = 300
-)
-
-plot_tvcm_by_terms(df_tvcm_5)
-
-dev.off()
+# png(
+#   filename = "figs/figure-2.png",
+#   width = 18.5,
+#   height = 22.5,
+#   units = "cm",
+#   pointsize = 12,
+#   res = 300
+# )
+# 
+# plot_tvcm_by_terms(df_tvcm_5)
+# 
+# dev.off()
 ```
+
+```{r}
+# pdf("figs/figure-2.pdf", width = 6, height = 8)
+# plot_tvcm_by_terms(df_tvcm_5)
+# dev.off()
+```
+
 
 # Table 2
 

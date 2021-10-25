@@ -444,7 +444,7 @@ plot_air_province_v2
 ```
 
 ```{r}
-pdf("figures/figure-1.pdf", width = 10, height = 7)
+pdf("figs/figure-1.pdf", width = 10, height = 7)
 plot_air_province_v2
 dev.off()
 ```
@@ -544,7 +544,7 @@ plot_vars_ma(prov = "MAYNAS", before = 5)
 
 ```{r warning=FALSE}
 provinces <- unique(df_malaria_loreto$province)
-pdf("figures/provinces.pdf")
+pdf("figs/provinces/provinces.pdf")
 for (i in seq_along(provinces)) {
   print(plot_vars_ma(prov = provinces[i], before = 5))
 }
@@ -639,7 +639,7 @@ plot_vars_prov(prov = "MAYNAS", before = 5)
 for (i in seq_along(provinces)) {
   prov <- provinces[i] %>% str_replace_all(" ", "-") %>% tolower()
   png(
-    paste0("figures/", prov, ".png"), width = 22, height = 18, units = "cm", 
+    paste0("figs/provinces/", prov, ".png"), width = 22, height = 18, units = "cm", 
     pointsize = 12, res = 300
   )
   print(plot_vars_prov(prov = provinces[i], before = 5))
@@ -657,7 +657,7 @@ for (i in seq_along(provinces)) {
     unique() %>% 
     pull()
   prov <- provinces[i] %>% str_replace_all(" ", "-") %>% tolower()
-  pdf(paste0("figures/", prov, ".pdf"))
+  pdf(paste0("figs/districts/", prov, ".pdf"))
   for (j in seq_along(districts)) {
     print(plot_vars_ma(prov = provinces[i], distr = districts[j], before = 11))
   }

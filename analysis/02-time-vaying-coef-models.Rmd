@@ -1628,7 +1628,7 @@ print(plot_lag_tvcm)
 
 ```{r}
 png(
-  filename  = "figures/figure-3.png", 
+  filename  = "figs/figure-3.png", 
   width     = 27.5, 
   height    = 22.5, 
   units     = "cm", 

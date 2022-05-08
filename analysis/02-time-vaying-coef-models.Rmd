@@ -7,17 +7,21 @@ editor_options:
   chunk_output_type: inline
 ---
 
+```{r setup, echo=FALSE}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
 We are going to use *generalized additive models* (GAMs) to estimate time-varying coefficients for climate variables in order to quantify their effects on malaria incidence by specie thought the time period of the study.
 
-First, lets load some packages to handle the tasks we are going to do.
+Lets load the packages we are going to use for data reading, wrangling and analysis.
 
 ```{r message=FALSE, warning=FALSE}
-library(htmltools)
-
 # Utilities
+library(htmltools)
 library(tictoc)
+library(fs)
 
-# Data loading
+# Data reading
 library(readr)
 library(skimr)
 
@@ -28,609 +32,314 @@ library(dplyr)
 library(scales)
 library(DT)
 library(stringr)
-
-# Time series
-# library(forecast)
+library(tidyr)
 
 # Plots
 library(ggplot2)
-ggplot2::theme_set(theme_bw())
-ggplot2::theme_update(panel.grid = element_blank())
 library(ggsci)
 library(GGally)
 library(DHARMa)
-# library(lemon)
 library(grid)
 library(gridExtra)
 library(graphics)
-# library(ggtext)
 
 # GAM
 library(mgcv)
-# library(gratia)
+library(gratia)
+```
+
+Setting up the theme for our plots.
+
+```{r ggplot-setup}
+ggplot2::theme_set(theme_bw())
+ggplot2::theme_update(panel.grid = element_blank())
+```
+
+# Data reading
+
+The cleaned up data can be found on the `data/processed/` directory on this repository. We are going to define the file path using the function `path()` of the `fs` packages. 
+
+```{r}
+data_path <- path("data", "processed")
+file_name <- "pro_malaria-monthly-cases-district-loreto.csv"
+file_path <- path(data_path, file_name)
+file_path
+```
+
+Create an object with the column names.
+
+```{r message=FALSE, warning=FALSE}
+col_names <- c(
+    "district", "year", "month", "falciparum", "vivax", "aet", "prcp", "q", 
+    "soilm", "tmax", "tmin", "pop2015", "province", "region", "dttm", "time"
+)
+```
+
+Create an object with the column types. We exclude `soilm` and `region` from the analysis.
+
+```{r}
+col_types <-
+  cols_only(
+    district = readr::col_factor(), year = readr::col_factor(), 
+    month = readr::col_factor(),
+    falciparum = col_integer(), vivax = col_integer(), aet = col_double(),
+    prcp = col_double(), q = col_double(), tmax = col_double(),
+    tmin = col_double(), pop2015 = col_integer(), province = readr::col_factor(),
+    dttm = col_datetime(), time = col_integer()
+  )
+```
+
+Reading data file into a data frame.
+
+```{r message=FALSE, warning=FALSE}
+monthly_cases <- 
+  read_csv(
+    file = file_path, col_names = col_names, col_types = col_types, skip = 1,
+    locale = readr::locale(encoding = "UTF-8")
+  )
+```
+
+Display the data.
+
+```{r}
+monthly_cases
 ```
 
 # Data wrangling
 
-## Loading
+The following wrangling pipe consists on these steps:
 
-The cleaned up data can be found on the `~/data/processed/` directory on this repository. Define the file path to read the data. 
-
-```{r}
-processed_data_path <- file.path("../data/processed/") 
-file_name           <- "pro_malaria-monthly-cases-district-loreto"
-file                <- paste(file_name, ".csv", sep = "")
-file_path           <- file.path(processed_data_path, file) 
-```
-
-Create a variable containing the column names for the data.
-
-```{r message=FALSE, warning=FALSE}
-col_names <- c(
-  "district",
-  "year",
-  "month",
-  "falciparum",
-  "vivax",
-  "aet",
-  "prcp",
-  "q",
-  "soilm",
-  "tmax",
-  "tmin",
-  "pop2015",
-  "province",
-  "region",
-  "dttm",
-  "time"
-)
-```
-
-Define column types to optimize the parsing. We exclude `soilm` and `region` for the analysis.
+- Re-scale the numeric predictors (`aet`, `prcp`, `q`, `tmax` and `tmin`) from 0 to 1.
+- Create a column with the population values on the natural logarithmic scale.
+- For each district, create columns for the 1, 3, 6 and 12 months-lagged values of the predictors.
+- Remove `NA`s from the lagged values.
 
 ```{r}
-# Column types
-col_types <- 
-  readr::cols_only(
-    district      = col_character(),
-    year          = col_integer(),
-    month         = col_integer(),
-    falciparum    = col_integer(),
-    vivax         = col_integer(),
-    aet           = col_double(),
-    prcp          = col_double(),
-    q             = col_double(),
-    tmax          = col_double(),
-    tmin          = col_double(),
-    pop2015       = col_integer(),
-    province      = col_character(),
-    dttm          = col_datetime(),
-    time          = col_integer()
-  )
+monthly_cases %>% 
+  mutate(
+    across(c(aet, prcp, q, tmax, tmin), scales::rescale, to = c(0, 1)),
+    pop2015_ln = log(pop2015)
+  ) %>% 
+  group_by(district) %>% 
+  arrange(dttm) %>% 
+  mutate(
+    across(
+      aet:tmin, 
+      list(
+        lag1 = ~ lag(.x, n = 1L), lag3 = ~ lag(.x, n = 3L), 
+        lag6 = ~ lag(.x, n = 6L), lag12 = ~ lag(.x, n = 12L)
+      ), 
+      .names = "{.col}_{.fn}"
+    )
+  ) %>% 
+  na.omit() %>% 
+  ungroup() -> 
+  monthly_cases_analysis
 ```
 
-Reading csv. file into a data frame.
-
-```{r message=FALSE, warning=FALSE}
-df_malaria_loreto <- 
-  readr::read_csv(
-    file      = file_path,
-    col_names = col_names,
-    col_types = col_types,
-    skip      = 1,
-    locale    = readr::locale(encoding = "UTF-8")
-  )
-```
-
-## Parsing
-
-We are going to parse `district`, `province`, `year` and `month` as factors.
+Display the final data for analysis.
 
 ```{r}
-to_factor <- c("year", "month", "district", "province")
-
-for (col in to_factor) {
-  df_malaria_loreto[[col]] <- factor(df_malaria_loreto[[col]])
-}
+monthly_cases_analysis
 ```
 
-## Validation 
-
-Check data structure.
-
-```{r message=FALSE, warning=FALSE}
-str(df_malaria_loreto)
-```
-
-To display a summary of the data, we first define a variable containing a table with summary statistics for each data type in the data frame using the `skim` function in the `skimr` package.
-
-```{r}
-skim_malaria <- skimr::skim(df_malaria_loreto)
-```
-
-
-Then, we display the summary tables for each data type using the `yank` function of the same package:
-
-- Factors:
-
-```{r}
-skimr::yank(skim_malaria, "factor")
-```
-
-- Numeric:
-
-```{r}
-skimr::yank(skim_malaria, "numeric")
-```
-
-- Datetime:
-
-```{r}
-skimr::yank(skim_malaria, "POSIXct")
-```
-
-## Feature engineering
-
-Create a copy of the data frame where we are going to transform and create some new columns.
-
-```{r}
-dat <- tibble::tibble(df_malaria_loreto)
-```
-
-### Scaling
-
-First, we are going to scale all climate variables from 0 to 1. The aim of this step is to avoid numerical problems in the GAM fitting procedures, and also to have a common scale on the coefficients.
-
-```{r}
-to_scale <- c("aet", "prcp", "q", "soilm", "tmax", "tmin")
-
-for (col in to_scale) {
-  dat[[col]] <- scales::rescale(df_malaria_loreto[[col]], to = c(0, 1))
-}
-```
-
-### Lagged variables
-
-Lagged variables are going to be used to build *distributed lag models* (DLM). In order to properly create lagged variables for this data set, first we are going to group the data by districts. Next, we arrange the data in each group by date. Finally, la `lag` function of the package `dplyr` is applied to create lagged variables by 1, 3, 6, and 12 months.
-
-```{r}
-dat <- dat %>% 
-  dplyr::group_by(district) %>%
-  dplyr::arrange(dttm) %>% 
-  dplyr::mutate(
-    aet_lag1    = dplyr::lag(aet,  n = 1L),
-    aet_lag3    = dplyr::lag(aet,  n = 3L),
-    aet_lag6    = dplyr::lag(aet,  n = 6L),
-    aet_lag12   = dplyr::lag(aet,  n = 12L),
-    prcp_lag1   = dplyr::lag(prcp, n = 1L),
-    prcp_lag3   = dplyr::lag(prcp, n = 3L),
-    prcp_lag6   = dplyr::lag(prcp, n = 6L),
-    prcp_lag12  = dplyr::lag(prcp, n = 12L),
-    q_lag1      = dplyr::lag(q,    n = 1L),
-    q_lag3      = dplyr::lag(q,    n = 3L),
-    q_lag6      = dplyr::lag(q,    n = 6L),
-    q_lag12     = dplyr::lag(q,    n = 12L),
-    soilm_lag1  = dplyr::lag(q,    n = 1L),
-    soilm_lag3  = dplyr::lag(q,    n = 3L),
-    soilm_lag6  = dplyr::lag(q,    n = 6L),
-    soilm_lag12 = dplyr::lag(q,    n = 12L),
-    tmax_lag1   = dplyr::lag(tmax, n = 1L),
-    tmax_lag3   = dplyr::lag(tmax, n = 3L),
-    tmax_lag6   = dplyr::lag(tmax, n = 6L),
-    tmax_lag12  = dplyr::lag(tmax, n = 12L),
-    tmin_lag1   = dplyr::lag(tmin, n = 1L),
-    tmin_lag3   = dplyr::lag(tmin, n = 3L),
-    tmin_lag6   = dplyr::lag(tmin, n = 6L),
-    tmin_lag12  = dplyr::lag(tmin, n = 12L)
-  )
-```
-
-```{r}
-dat
-```
-
-Since `NA` values are going to be present for the first 12 months (because of the 12 month lagged variables), we have to do a filter.
-
-```{r}
-dat <- na.omit(dat)
-```
-
-Finally, we create a column containing the values of the districts' population on the natural logarithmic scale.
-
-```{r}
-dat$ln_pop2015 <- log(dat$pop2015)
-```
-
-Display the final data frame for checking.
-
-```{r}
-dat
-```
 # Time-varying coefficients model building
 
-```{r}
-# set.seed(20210223)
-# 
-# indices <- splitTools::partition(
-#   y    = dat$district, 
-#   type = "stratified", 
-#   p    = c(train = 0.88, test = 0.12)
-# )
-# 
-# train <- dat[indices$train, ]
-# test  <- dat[indices$test, ]
-```
+## P. vivax
 
-```{r}
-# get_oos_dev <- function(model, prediction, y, weights = NULL) {
-# 
-#   if(is.null(weights)) weights <- rep(1, times= length(y))
-# 
-#   dev_residuals <- model$family$dev.resids(y, prediction, weights)
-#   deviance      <- sum(dev_residuals)
-#   deviance
-# }
-```
-
-## TVCM: Model 5
-
-Predictors: `aet`, `prcp`, `tmin`
-
-### P. vivax
+We start with the GAM with a time-varying effects configuration for P. vivax cases. The basis dimension `k` for the `s(district)` (random effect) term was set to 49 because there are 49 districts in the data. The remaining basis dimensions were selected by checking the test for adequacy of basis dimensions produced by the function `gam.check` iteratively until the simulated p-values were big enough to have a strong likelihood that they were adequate. 
 
 ```{r message=FALSE}
-tictoc::tic("GAM model fitting")
-vivax_tvcm_5_poiss <- mgcv::bam(
-  formula = 
-    vivax ~ 
-    offset(ln_pop2015) +
-    s(district, bs = "re", k = 49) +
+tic("GAM fitting")
+vivax_tvcm <- bam(
+  vivax ~ offset(pop2015_ln) + s(district, bs = "re", k = 49) +
     s(time, by = aet,  bs = "tp", k = 50) +
     s(time, by = prcp, bs = "tp", k = 30) +
     s(time, by = tmin, bs = "tp", k = 100),
-  family   = poisson(),
-  data     = dat,
-  method   = "fREML",
-  discrete = TRUE
+  family = nb(), data = monthly_cases_analysis, method = "fREML", discrete = TRUE
 )
-tictoc::toc()
+toc()
 
-cat("\nConverged?", vivax_tvcm_5_poiss$converged, "\n")
+cat("\nConverged?", vivax_tvcm$converged, "\n")
 
-mgcv::summary.gam(vivax_tvcm_5_poiss)
+summary(vivax_tvcm)
 ```
 
-```{r message=FALSE, warning=FALSE}
+Now we check the model using the default function in the `mgcv` package for model diagnosis.
+
+```{r include=TRUE}
 par(mfrow = c(2, 2))
-mgcv::gam.check(vivax_tvcm_5_poiss, pch = 19, cex = 0.3)
+gam.check(vivax_tvcm)
 ```
+
+We can use the `gratia` package to produce tidier outputs for GAM models using `mgcv`. Here, we use the  `appraise` function to show diagnostics plots.
+
+```{r fig.width=12, fig.height=8}
+appraise(vivax_tvcm, point_col = "steelblue", point_alpha = 0.4)
+```
+
+We plot the fitted smooth functions for the random effect term and the covariates.
+
+```{r fig.width=12, fig.height=8}
+draw(vivax_tvcm, residuals = TRUE)
+```
+
+Finlly, we check for concurvity. 
 
 ```{r}
-sim_res_vivax_tvcm_5_poiss <- simulateResiduals(
-  fittedModel = vivax_tvcm_5_poiss,
-  integerResponse = TRUE
-)
-plot(sim_res_vivax_tvcm_5_poiss)
+model_concurvity(vivax_tvcm) %>% 
+  filter(type == "estimate")
 ```
 
-```{r}
-testDispersion(sim_res_vivax_tvcm_5_poiss)
-```
-
-
-```{r message=FALSE}
-tictoc::tic("GAM model fitting")
-vivax_tvcm_5 <- mgcv::bam(
-  formula = 
-    vivax ~ 
-    offset(ln_pop2015) +
-    s(district, bs = "re", k = 49) +
-    s(time, by = aet,  bs = "tp", k = 50) +
-    s(time, by = prcp, bs = "tp", k = 30) +
-    s(time, by = tmin, bs = "tp", k = 100),
-  family   = nb(),
-  data     = dat,
-  method   = "fREML",
-  discrete = TRUE
-)
-tictoc::toc()
-
-cat("\nConverged?", vivax_tvcm_5$converged, "\n")
-
-mgcv::summary.gam(vivax_tvcm_5)
-```
-
-```{r}
-# sim_res_vivax_tvcm_5 <- simulateResiduals(
-#   fittedModel = vivax_tvcm_5,
-#   integerResponse = TRUE,
-#   n = 1000
-# )
-# plot(sim_res_vivax_tvcm_5)
-```
-
-```{r}
-# testDispersion(sim_res_vivax_tvcm_5)
-```
-
-```{r}
-mgcv::summary.gam(vivax_tvcm_5)$s.table
-```
-
-```{r message=FALSE, warning=FALSE}
-par(mfrow = c(2, 2))
-mgcv::gam.check(vivax_tvcm_5, pch = 19, cex = 0.3)
-```
-
-```{r message=FALSE, warning=FALSE}
-mgcv::plot.gam(
-  x          = vivax_tvcm_5, 
-  n          = 500, 
-  seWithMean = TRUE, 
-  scale      = 0, 
-  pages      = 1
-)
-```
-
-```{r}
-mgcv::concurvity(vivax_tvcm_5)
-```
-
-```{r}
-mgcv::concurvity(vivax_tvcm_5, full = FALSE)$estimate
-```
-
-```{r message=FALSE}
-tictoc::tic("GAM model fitting")
-vivax_tvcm_5 <- mgcv::bam(
-  formula = 
-    vivax ~ 
-    offset(ln_pop2015) +
-    s(district, bs = "re", k = 49) +
-    s(time, by = aet,  bs = "tp", k = 50) +
-    s(time, by = prcp, bs = "tp", k = 30) +
-    s(time, by = tmin, bs = "tp", k = 100),
-  family   = nb(),
-  data     = dat,
-  method   = "fREML",
-  discrete = TRUE
-)
-tictoc::toc()
-
-cat("\nConverged?", vivax_tvcm_5$converged, "\n")
-
-mgcv::summary.gam(vivax_tvcm_5)
-```
+In the Supplementary Information section of the article there is a further discussion why the concurvity is high in our models.
 
 ### P. falciparum
 
+Now, we repeat the GAM fitting and diagnosis for P. falciparum.
+
 ```{r message=FALSE}
-tictoc::tic("GAM model fitting")
-falciparum_tvcm_5 <- mgcv::bam(
-  formula = 
-    falciparum ~ 
-    offset(ln_pop2015) +
-    s(district, bs = "re", k = 49) +
+tic("GAM fitting")
+falciparum_tvcm <- bam(
+  falciparum ~ offset(pop2015_ln) + s(district, bs = "re", k = 49) +
     s(time, by = aet,  bs = "tp", k = 50) +
     s(time, by = prcp, bs = "tp", k = 30) +
     s(time, by = tmin, bs = "tp", k = 100),
-  family   = nb(),
-  data     = dat,
-  method   = "fREML",
-  discrete = TRUE
+  family = nb(), data = monthly_cases_analysis, method = "fREML", discrete = TRUE
 )
-tictoc::toc()
+toc()
 
-cat("\nConverged?", falciparum_tvcm_5$converged, "\n")
+cat("\nConverged?", falciparum_tvcm$converged, "\n")
 
-mgcv::summary.gam(falciparum_tvcm_5)
+summary(falciparum_tvcm)
+```
+```{r fig.width=12, fig.height=8}
+appraise(falciparum_tvcm, point_col = "steelblue", point_alpha = 0.4)
 ```
 
-```{r message=FALSE, warning=FALSE}
-par(mfrow = c(2, 2))
-mgcv::gam.check(falciparum_tvcm_5, pch = 19, cex = 0.3)
-```
-
-```{r message=FALSE, warning=FALSE}
-mgcv::plot.gam(
-  x          = falciparum_tvcm_5, 
-  n          = 500, 
-  seWithMean = TRUE, 
-  scale      = 0, 
-  pages      = 1
-)
+```{r fig.width=12, fig.height=8}
+draw(falciparum_tvcm, residuals = TRUE)
 ```
 
 ```{r}
-mgcv::concurvity(falciparum_tvcm_5)
-```
-
-```{r}
-mgcv::concurvity(falciparum_tvcm_5, full = FALSE)$estimate
+model_concurvity(falciparum_tvcm) %>% 
+  filter(type == "estimate")
 ```
 
 # Figure 2
 
+To construct Figure 2 on the article, we first create a data frame with the start and end dates of the PAMAFRO intervention.
+
 ```{r message=FALSE, warning=FALSE}
-df_pamafro_period <- tibble::tibble(
-  start = lubridate::make_datetime(year = 2005, month = 10, day = 1L), 
-  end   = lubridate::make_datetime(year = 2010, month = 09, day = 1L)
-)
+pamafro_period <- 
+  tibble(
+    start = make_datetime(year = 2005, month = 10, day = 1L), 
+    end = make_datetime(year = 2010, month = 09, day = 1L)
+  )
 ```
 
-```{r include=FALSE}
-plot_vivax_tvcm_5 <- mgcv::plot.gam(
-  x          = vivax_tvcm_5,
-  n          = 500,
-  seWithMean = TRUE, 
-  scale      = 0
-)
-
-plot_falciparum_tvcm_5 <- mgcv::plot.gam(
-  x          = falciparum_tvcm_5,
-  n          = 500,
-  seWithMean = TRUE, 
-  scale      = 0
-)
-```
+Then we define a function called `get_est` to extract the smooth estimates evaluated over a range of covariate values in `data` for each model using the `smooth_estimates` of the `gratia` package. 
 
 ```{r}
-tvcm_5_terms <- c(
-  "aet",
-  "prcp", 
-  "tmin"
+get_est <- function(vivax_model, falciparum_model, data) {
+  vivax_model %>% 
+  smooth_estimates(
+    smooth = c("s(time):aet", "s(time):prcp", "s(time):tmin"), data = data
+  ) -> vivax_smooth_est
+  
+  falciparum_model %>% 
+  smooth_estimates(
+    smooth = c("s(time):aet", "s(time):prcp", "s(time):tmin"), data = data
+  ) -> falciparum_smooth_est
+  
+  smooth_est_list <- list(
+    "vivax" = vivax_smooth_est, "falciparum" = falciparum_smooth_est
+  )
+  
+  full_smooth_est <- 
+  bind_rows(smooth_est_list, .id = "specie") %>% 
+  mutate(dttm = as_datetime(time))
+  
+  full_smooth_est
+}
+```
+
+We create a data frame for the `smooth_estimates` to evaluate over. We need to include all the terms inthe model, but we are going to extract just the estimates for the smooths associated with the covariates `aet`, `prcp` and `tmin`, so it does not matter which values we put in the other terms (`pop2015_ln` and `district`. And since the `smooth_estimates` function evaluates the smooth times the covariate value, that is $s\left(t\right)x$, we fill with ones the values for the covariates, since we just want $s\left(t\right)$.
+
+```{r}
+dummy_data <- 
+  tibble(
+    pop2015_ln = rep(1, 500), district = factor(rep(1, 500)), 
+    time = seq_min_max(monthly_cases_analysis$time, 500), aet = rep(1, 500), 
+    prcp = rep(1, 500), tmin = rep(1, 500)
 )
 ```
 
+Now we use the function we created to extract the smooth estimates.
+
 ```{r}
-term_labels <- c(
+smooth_est <- get_est(vivax_tvcm, falciparum_tvcm, dummy_data)
+```
+
+Display the smooth estimates.
+
+```{r}
+smooth_est
+```
+
+Here, we define a function to plot the smooth estimates and add a PAMAFRO period layer and some labels for the final figure.
+
+```{r}
+plot_tve <- function(smooth_est, pamafro_period, labels) {
+  tve_plot <- 
+  smooth_est %>% 
+  ggplot() +
+  facet_wrap(
+    ~ by, ncol = 1, scales = "free_y", strip = "left", 
+    labeller = labeller(by = labels)
+  ) +
+  geom_line(aes(dttm, est, color = specie), size = 1) +
+  geom_ribbon(
+    aes(dttm, est, ymin = est + 2*se, ymax = est - 2*se, fill = specie), 
+    alpha = 0.1
+  ) +
+  geom_rect(
+    data = pamafro_period, aes(xmin = start, xmax = end), ymin = -100, ymax = 100, 
+    alpha = 0.2
+  ) +
+  geom_vline(
+    xintercept = c(pamafro_period$start, pamafro_period$end), linetype = "dashed", 
+    alpha = 0.6
+  ) +
+  geom_hline(aes(yintercept = 0), alpha = 0.6) +
+  scale_x_datetime(
+    date_labels = "%Y", date_breaks = "1 year", expand = expansion(add = 0)
+  ) +
+  labs(y = NULL, x = NULL) +
+  theme(
+    legend.position = "top", legend.title = element_blank(), 
+    strip.placement = "outside", strip.background = element_blank()
+  ) +
+  scale_color_npg(labels = c("P. vivax", "P. falciparum")) +
+  scale_fill_npg(labels = c("P. vivax", "P. falciparum"))
+  
+  tve_plot
+}
+```
+
+Define the term labels.
+
+```{r}
+covariate_labels <- c(
   aet = "Actual evapotranspiration\ntime-varying coefficients (linear predictor)",
   prcp = "Precipitation\ntime-varying coefficients (linear predictor)",
   tmin = "Minimum temperature\ntime-varying coefficients (linear predictor)"
 )
 ```
 
-```{r}
-get_tvcoef <- function(plot_vivax, plot_falciparum, terms) {
-  nplots_vivax      <- length(plot_vivax)
-  nplots_falciparum <- length(plot_falciparum)
-  
-  assertthat::are_equal(nplots_vivax, nplots_falciparum)
-  
-  nplots <- nplots_vivax
-  
-  tvcoef_vivax <-  vector(mode = "list", length = nplots - 1)
-  
-  for (i in 2:nplots) {
-    tvcoef_vivax[[(i-1)]] <- 
-      tibble::tibble(
-        x        = lubridate::as_datetime(plot_vivax[[i]]$x),
-        se       = plot_vivax[[i]]$se,
-        fit      = plot_vivax[[i]]$fit,
-        term     = terms[(i-1)],
-        specie   = "vivax"
-      )
-  }
-  
-  df_tvcoef_vivax <- dplyr::bind_rows(tvcoef_vivax)
-  
-  tvcoef_falciparum <-  vector(mode = "list", length = nplots - 1)
-  
-  for (i in 2:nplots) {
-    tvcoef_falciparum[[(i-1)]] <- 
-      tibble::tibble(
-        x        = lubridate::as_datetime(plot_falciparum[[i]]$x),
-        se       = plot_falciparum[[i]]$se,
-        fit      = plot_falciparum[[i]]$fit,
-        term     = terms[(i-1)],
-        specie   = "falciparum"
-      )
-  }
-  
-  df_tvcoef_falciparum <- dplyr::bind_rows(tvcoef_falciparum)
-  
-  df_tvcoef <- dplyr::bind_rows(df_tvcoef_vivax, df_tvcoef_falciparum)
-  
-  df_tvcoef$term   <- factor(df_tvcoef$term, terms)
-  df_tvcoef$specie <- factor(
-    x      = df_tvcoef$specie,
-    levels = c("vivax", "falciparum"),
-    #labels = c("P. vivax", "P. falciparum")
-  )
-  
-  df_tvcoef
-}
-```
+Plot Figure 2.
 
-```{r}
-plot_tvcm_by_terms <- function(df_tvcm) {
-  
-  p <- ggplot(df_tvcm)
-  
-  # Add grid 
-  p <- p + facet_wrap(
-    facets = ~ term, 
-    ncol = 1, 
-    scales = "free_y", 
-    strip = "left",
-    # labeller = labeller(term = tvcm_5_labels)
-    labeller = labeller(term = term_labels)
-  )
-  # p <- p + facet_grid(rows = term ~ ., scales = "free_y", switch = "y")
-  #p <- p + facet_rep_wrap(~ term, ncol = 1, scales = "free_y", strip = "top", repeat.tick.labels = TRUE)
-  
-  # Add lines
-  p <- p + geom_line(mapping = aes(x = x, y = fit, color = specie), size = 1)
-  
-  # Add confidence intervals
-  p <- p + geom_ribbon(
-    mapping = aes(
-      x    = x,
-      y    = fit,
-      ymin = fit + se,
-      ymax = fit - se,
-      fill = specie
-    ),
-    alpha = 0.1
-  )
-  
-  # Add PAMAFRO's period layer
-  p <- p + geom_rect(
-    data    = df_pamafro_period,
-    mapping = aes(xmin = start, xmax = end), 
-    ymin    = -100, 
-    ymax    = 100, 
-    alpha   = 0.2
-  ) 
-    
-  # Add PAMAFRO's period lines
-  p <- p + geom_vline(
-    xintercept = c(df_pamafro_period$start, df_pamafro_period$end), 
-    linetype   = "dashed", 
-    alpha      = 0.6
-  )
-  
-  # Add y = 0 line
-  p <- p + geom_hline(mapping = aes(yintercept = 0), alpha = 0.6)
-  
-  # Scale date
-  p <- p + scale_x_datetime(date_labels = "%Y", date_breaks = "1 year", expand = expansion(add = 0))
-  
-  #p <- p + scale_y_continuous(limits = c(-5, 5), breaks = c(-4, -2, 0, 2, 4), expand = expansion(add = 0))
-                              
-  #p <- p + scale_colour_discrete(labels = c("P. vivax", "P. falciparum"))
-  
-  # Add labels
-  p <- p + labs(y = NULL, x = NULL)
-
-  # Format layer
-  p <- p + theme(
-    legend.position = "top", 
-    legend.title = element_blank(), 
-    strip.placement = "outside",
-    strip.background = element_blank()
-  )
-  
-  p <- p + ggsci::scale_color_npg(labels = c("P. vivax", "P. falciparum")) 
-  
-  p <- p + ggsci::scale_fill_npg(labels = c("P. vivax", "P. falciparum"))
-  
-  p
-  
-  #print(p)
-}
-```
-
-```{r}
-df_tvcm_5 <- get_tvcoef(
-  plot_vivax_tvcm_5, 
-  plot_falciparum_tvcm_5, 
-  tvcm_5_terms
-)
-```
-
-```{r fig.height=10, fig.width=8}
-plot_tvcm_by_terms(df_tvcm_5)
+```{r fig.width=10, fig.height=9}
+plot_tve(smooth_est, pamafro_period, covariate_labels)
 ```
 
 ```{r}
@@ -643,42 +352,21 @@ plot_tvcm_by_terms(df_tvcm_5)
 #   res = 300
 # )
 # 
-# plot_tvcm_by_terms(df_tvcm_5)
+# tve_plot
 # 
 # dev.off()
 ```
 
 ```{r}
 # pdf("figs/figure-2.pdf", width = 6, height = 8)
-# plot_tvcm_by_terms(df_tvcm_5)
+# tve_plot
 # dev.off()
 ```
-
 
 # Table 2
 
 ```{r}
-get_period <- function(x) {
-  ifelse(
-    x < df_pamafro_period$start,
-    "before",
-    ifelse(
-      x > df_pamafro_period$end,
-      "after",
-      "during"
-    )
-  )
-}
-```
-
-```{r}
-get_ci <- function(x) {
-  sprintf("[%s, %s]", round(x[1] - x[2], 2), round(x[1] + x[2], 2))
-}
-```
-
-```{r}
-table_02_sketch = htmltools::withTags(
+table_02_sketch = withTags(
   table(
     class = "display",
     thead(
@@ -700,136 +388,106 @@ table_02_sketch = htmltools::withTags(
 ```
 
 ```{r}
-df_tvcm_5$period <- apply(df_tvcm_5[, c("x")], 1, get_period)
-
-df_tvcm_5$period <- factor(
-  x      = df_tvcm_5$period,
-  levels = c("before", "during", "after")
-)
+smooth_est %>% 
+  mutate(
+    period = case_when(
+      dttm < pamafro_period$start ~ "before",
+      dttm > pamafro_period$end ~ "after",
+      TRUE ~ "during"
+    )
+  ) %>% 
+  mutate(period = factor(period, c("before", "during", "after"))) ->
+  smooth_est_period
 ```
 
 ```{r}
-df_tvcm_5 %>% 
-  dplyr::group_by(term, period, specie) %>% 
-  dplyr::slice_max(fit, n = 1) -> df_tvcm_5_max
+smooth_est %>% 
+  group_by(by , period, specie) %>% 
+  slice_max(est, n = 1) %>% 
+  ungroup() -> smooth_est_max
 ```
 
 ```{r}
-df_tvcm_5 %>% 
-  dplyr::group_by(term, period, specie) %>% 
-  dplyr::slice_min(fit, n = 1) -> df_tvcm_5_min
+smooth_est %>% 
+  group_by(by, period, specie) %>% 
+  slice_min(est, n = 1) %>% 
+  ungroup() -> smooth_est_min
 ```
 
 ```{r}
-df_tvcm_5_max$extrema <- rep("max", length(df_tvcm_5_max$fit))
-df_tvcm_5_min$extrema <- rep("min", length(df_tvcm_5_min$fit))
-
-df_tvcm_5_extrema <- dplyr::bind_rows(df_tvcm_5_max, df_tvcm_5_min)
+smooth_est_extrema_list <- list("max" = smooth_est_max, "min" = smooth_est_min)
 ```
 
 ```{r}
-df_tvcm_5_extrema$ci <- apply(df_tvcm_5_extrema[, c("fit", "se")], 1, get_ci)
+smooth_est_extrema <- bind_rows(smooth_est_extrema_list, .id = "extrema")
+```
+
+```{r}
+smooth_est_extrema %>% 
+  mutate(ci = sprintf("[%s, %s]", round(est - 2*se, 2), round(est + 2*se, 2))) -> 
+  smooth_est_extrema
 ```
 
 ## P. vivax
 
 ```{r message=FALSE}
-df_tvcm_5_extrema %>% 
-  dplyr::filter(specie == "P. vivax") %>% 
-  dplyr::select(term, period, extrema, fit, ci) %>%
-  dplyr::mutate(fit = round(fit, 4)) %>% 
-  tidyr::pivot_wider(
-    id_cols     = term,
-    names_from  = c(period, extrema),
-    values_from = c(fit, ci),
-    names_sep   = "_"
+smooth_est_extrema %>% 
+  filter(specie == "vivax") %>% 
+  select(by, period, extrema, est, ci) %>%
+  mutate(est = round(est, 4)) %>% 
+  pivot_wider(
+    by, names_from  = c(period, extrema), values_from = c(est, ci), names_sep = "_"
   ) %>% 
-  dplyr::select(
-    term, 
-    fit_before_min,
-    ci_before_min,
-    fit_before_max,
-    ci_before_max,
-    fit_during_min,
-    ci_during_min, 
-    fit_during_max,
-    ci_during_max,
-    fit_after_min,
-    ci_after_min, 
-    fit_after_max,
-    ci_after_max
-  ) -> df_tvcm_5_extrema_vivax
+  select(by, ends_with("min"), ends_with("max")) -> smooth_est_extrema_vivax
 ```
 
 ```{r}
-df_tvcm_5_extrema_vivax %>% 
-  tibble::column_to_rownames(var = "term") %>% 
-  DT::datatable(
-    container  = table_02_sketch,
-    extensions = 'Buttons',
-    options    = list(
-      dom        = "Bt", 
-      scrollX    = TRUE,
+smooth_est_extrema_vivax %>% 
+  column_to_rownames(var = "by") %>% 
+  datatable(
+    container = table_02_sketch, extensions = 'Buttons',
+    options = list(
+      dom = "Bt", 
+      scrollX = TRUE,
       columnDefs = list(list(className = 'dt-center', targets = 6)),
-      buttons    = c('copy', 'csv')
-    ),
-    caption    = "P. vivax"
+      buttons = c('copy', 'csv')
+    ), 
+    caption = "P. vivax"
   )
 ```
 
 ## P. falciparum
 
 ```{r message=FALSE}
-df_tvcm_5_extrema %>% 
-  dplyr::filter(specie == "P. falciparum") %>% 
-  dplyr::select(term, period, extrema, fit, ci) %>%
-  dplyr::mutate(fit = round(fit, 4)) %>% 
-  tidyr::pivot_wider(
-    id_cols     = term,
-    names_from  = c(period, extrema),
-    values_from = c(fit, ci),
-    names_sep   = "_"
+smooth_est_extrema %>% 
+  filter(specie == "falciparum") %>% 
+  select(by, period, extrema, est, ci) %>%
+  mutate(est = round(est, 4)) %>% 
+  pivot_wider(
+    by, names_from  = c(period, extrema), values_from = c(est, ci), names_sep = "_"
   ) %>% 
-  dplyr::select(
-    term, 
-    fit_before_min,
-    ci_before_min,
-    fit_before_max,
-    ci_before_max,
-    fit_during_min,
-    ci_during_min, 
-    fit_during_max,
-    ci_during_max,
-    fit_after_min,
-    ci_after_min, 
-    fit_after_max,
-    ci_after_max
-  ) -> df_tvcm_5_extrema_falciparum
+  select(by, ends_with("min"), ends_with("max")) -> smooth_est_extrema_falciparum
 ```
 
 ```{r}
-df_tvcm_5_extrema_falciparum %>% 
-  tibble::column_to_rownames(var = "term") %>% 
-  DT::datatable(
-    container  = table_02_sketch,
-    extensions = 'Buttons',
-    options    = list(
-      dom        = "Bt", 
-      scrollX    = TRUE,
+smooth_est_extrema_falciparum %>% 
+  column_to_rownames(var = "by") %>% 
+  datatable(
+    container = table_02_sketch, extensions = 'Buttons',
+    options = list(
+      dom = "Bt", 
+      scrollX = TRUE,
       columnDefs = list(list(className = 'dt-center', targets = 6)),
-      buttons    = c('copy', 'csv')
-    ),
-    caption    = "P. falciparum"
+      buttons = c('copy', 'csv')
+    ), 
+    caption = "P. falciparum"
   )
 ```
 
 ```{r}
-df_tvcm_5 %>% 
-  dplyr::group_by(period, specie, term) %>% 
-  #dplyr::arrange(x) %>% 
-  dplyr::filter(
-    fit == min(fit) | fit == max(fit)
-  )
+smooth_est %>% 
+  group_by(period, specie, by) %>% 
+  filter(est == min(est) | est == max(est))
 ```
 
 # Lagged variables models
@@ -843,7 +501,7 @@ tictoc::tic("GAM model fitting")
 vivax_tvcm_5_lag1 <- mgcv::bam(
   formula = 
     vivax ~ 
-    offset(ln_pop2015) + 
+    offset(pop2015_ln) + 
     s(district, bs = "re") +
     s(time, by = aet_lag1,   bs = "tp", k = 50) +
     s(time, by = prcp_lag1,  bs = "tp", k = 30) +
@@ -890,7 +548,7 @@ tictoc::tic("GAM model fitting")
 falciparum_tvcm_5_lag1 <- mgcv::bam(
   formula = 
     falciparum ~ 
-    offset(ln_pop2015) + 
+    offset(pop2015_ln) + 
     s(district, bs = "re") +
     s(time, by = aet_lag1,   bs = "tp", k = 50) +
     s(time, by = prcp_lag1,  bs = "tp", k = 30) +
@@ -957,7 +615,7 @@ tvcm_5_lag1_terms <- c(
 ```
 
 ```{r}
-df_tvcm_5_lag1 <- get_tvcoef(
+smooth_est_lag1 <- get_tvcoef(
   plot_vivax_tvcm_5_lag1, 
   plot_falciparum_tvcm_5_lag1, 
   tvcm_5_lag1_terms
@@ -965,7 +623,7 @@ df_tvcm_5_lag1 <- get_tvcoef(
 ```
 
 ```{r fig.height=9, fig.width=8}
-plot_tvcm_by_terms(df_tvcm_5_lag1)
+plot_tvcm_by_terms(smooth_est_lag1)
 ```
 
 ## 3 months
@@ -977,7 +635,7 @@ tictoc::tic("GAM model fitting")
 vivax_tvcm_5_lag3 <- mgcv::bam(
   formula = 
     vivax ~ 
-    offset(ln_pop2015) + 
+    offset(pop2015_ln) + 
     s(district, bs = "re") +
     s(time, by = aet_lag3,   bs = "tp", k = 50) +
     s(time, by = prcp_lag3,  bs = "tp", k = 30) +
@@ -1024,7 +682,7 @@ tictoc::tic("GAM model fitting")
 falciparum_tvcm_5_lag3 <- mgcv::bam(
   formula = 
     falciparum ~ 
-    offset(ln_pop2015) + 
+    offset(pop2015_ln) + 
     s(district, bs = "re") +
     s(time, by = aet_lag3,   bs = "tp", k = 50) +
     s(time, by = prcp_lag3,  bs = "tp", k = 30) +
@@ -1091,7 +749,7 @@ tvcm_5_lag3_terms <- c(
 ```
 
 ```{r}
-df_tvcm_5_lag3 <- get_tvcoef(
+smooth_est_lag3 <- get_tvcoef(
   plot_vivax_tvcm_5_lag3, 
   plot_falciparum_tvcm_5_lag3, 
   tvcm_5_lag3_terms
@@ -1099,7 +757,7 @@ df_tvcm_5_lag3 <- get_tvcoef(
 ```
 
 ```{r fig.height=9, fig.width=8}
-plot_tvcm_by_terms(df_tvcm_5_lag3)
+plot_tvcm_by_terms(smooth_est_lag3)
 ```
 
 ## 6 months
@@ -1111,7 +769,7 @@ tictoc::tic("GAM model fitting")
 vivax_tvcm_5_lag6 <- mgcv::bam(
   formula = 
     vivax ~ 
-    offset(ln_pop2015) + 
+    offset(pop2015_ln) + 
     s(district, bs = "re") +
     s(time, by = aet_lag6,   bs = "tp", k = 50) +
     s(time, by = prcp_lag6,  bs = "tp", k = 30) +
@@ -1158,7 +816,7 @@ tictoc::tic("GAM model fitting")
 falciparum_tvcm_5_lag6 <- mgcv::bam(
   formula = 
     falciparum ~ 
-    offset(ln_pop2015) + 
+    offset(pop2015_ln) + 
     s(district, bs = "re") +
     s(time, by = aet_lag6,   bs = "tp", k = 50) +
     s(time, by = prcp_lag6,  bs = "tp", k = 30) +
@@ -1225,7 +883,7 @@ tvcm_5_lag6_terms <- c(
 ```
 
 ```{r}
-df_tvcm_5_lag6 <- get_tvcoef(
+smooth_est_lag6 <- get_tvcoef(
   plot_vivax_tvcm_5_lag6, 
   plot_falciparum_tvcm_5_lag6, 
   tvcm_5_lag6_terms
@@ -1233,7 +891,7 @@ df_tvcm_5_lag6 <- get_tvcoef(
 ```
 
 ```{r fig.height=9, fig.width=8}
-plot_tvcm_by_terms(df_tvcm_5_lag6)
+plot_tvcm_by_terms(smooth_est_lag6)
 ```
 
 ## 12 months
@@ -1245,7 +903,7 @@ tictoc::tic("GAM model fitting")
 vivax_tvcm_5_lag12 <- mgcv::bam(
   formula = 
     vivax ~ 
-    offset(ln_pop2015) + 
+    offset(pop2015_ln) + 
     s(district, bs = "re") +
     s(time, by = aet_lag12,   bs = "tp", k = 50) +
     s(time, by = prcp_lag12,  bs = "tp", k = 30) +
@@ -1292,7 +950,7 @@ tictoc::tic("GAM model fitting")
 falciparum_tvcm_5_lag12 <- mgcv::bam(
   formula = 
     falciparum ~ 
-    offset(ln_pop2015) + 
+    offset(pop2015_ln) + 
     s(district, bs = "re") +
     s(time, by = aet_lag12,   bs = "tp", k = 50) +
     s(time, by = prcp_lag12,  bs = "tp", k = 30) +
@@ -1359,7 +1017,7 @@ tvcm_5_lag12_terms <- c(
 ```
 
 ```{r}
-df_tvcm_5_lag12 <- get_tvcoef(
+smooth_est_lag12 <- get_tvcoef(
   plot_vivax_tvcm_5_lag12, 
   plot_falciparum_tvcm_5_lag12, 
   tvcm_5_lag12_terms
@@ -1367,11 +1025,11 @@ df_tvcm_5_lag12 <- get_tvcoef(
 ```
 
 ```{r fig.height=9, fig.width=8}
-plot_tvcm_by_terms(df_tvcm_5_lag12)
+plot_tvcm_by_terms(smooth_est_lag12)
 ```
 
 ```{r}
-df_malaria_loreto %>% 
+monthly_cases %>% 
   group_by(district) %>% 
   summarise(
     vivax_zeros = 100 * (sum(vivax < 1)/n()),
@@ -1409,7 +1067,7 @@ df_tvcm_lag0 <- get_tvcoef(
 ```
 
 ```{r}
-df_tvcm_lag0 <- tibble(df_tvcm_5)
+df_tvcm_lag0 <- tibble(smooth_est)
 df_tvcm_lag0$lag <- 0
 ```
 
@@ -1597,7 +1255,7 @@ df_tvcm_lagged %>%
     alpha = 0.1
   ) +
   geom_rect(
-    data    = df_pamafro_period,
+    data    = pamafro_period,
     mapping = aes(xmin = start, xmax = end), 
     ymin    = -60, 
     ymax    = 60, 
@@ -1605,7 +1263,7 @@ df_tvcm_lagged %>%
   ) +
   geom_hline(mapping  = aes(yintercept = 0), alpha = 0.6) +
   geom_vline(
-    xintercept = c(df_pamafro_period$start, df_pamafro_period$end),
+    xintercept = c(pamafro_period$start, pamafro_period$end),
     linetype   = 'dashed',
     alpha      = 0.8
   ) +

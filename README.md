@@ -22,18 +22,17 @@ In this study, we hypothesized that the interruption of malaria control interven
 
 ## Repository structure
 
-- [analysis](analysis) `R` markdowns and outputs.
-  - [figs](analysis/figs) Main and supplementary figures.
-    - [supplementary-figs](analysis/figs/supplementary-figs)  
-      - [districts](analysis/figs/supplementary-figs/districts) Meteorological variables time-series plot for every district in Loreto, Peru.
-      - [provinces](analysis/figs/supplementary-figs/provinces) Meteorological variables time-series plot aggregated for every province in Loreto, Peru.
-    - [figure-1-with-map.jpg](analysis/figs/figure-1-with-map.jpg) Annual malaria incidence rates variation by parasite species (Peru map added).
-    - [figure-1.pdf](analysis/figs/figure-1.pdf) Annual malaria incidence rates variation by parasite species.
-    - [figure-2.png](analysis/figs/figure-2.png) Fitted time-varying meteorological effects on MIR by parasite species.
-    - [figure-3.png](analysis/figs/figure-3.png) Fitted time-varying meteorological effects on MIR by parasite species at different time lags.
-  - [00-data-preparation.Rmd](analysis/00-data-preparation.Rmd) `R` markdown for data preparation and preprocessing.
-  - [01-exploratory-data-analysis.Rmd](analysis/01-exploratory-data-analysis.Rmd) `R` markdown for exploratory data analysis.
-  - [02-time-vaying-coef-models.Rmd](analysis/02-time-vaying-coef-models.Rmd) `R` markdown for model building and interpretation.
+- [figs](analysis/figs) Main and supplementary figures.
+  - [supplementary-figs](analysis/figs/supplementary-figs)  
+    - [districts](analysis/figs/supplementary-figs/districts) Meteorological variables time-series plot for every district in Loreto, Peru.
+    - [provinces](analysis/figs/supplementary-figs/provinces) Meteorological variables time-series plot aggregated for every province in Loreto, Peru.
+  - [figure-1-with-map.jpg](analysis/figs/figure-1-with-map.jpg) Annual malaria incidence rates variation by parasite species (Peru map added).
+  - [figure-1.pdf](analysis/figs/figure-1.pdf) Annual malaria incidence rates variation by parasite species.
+  - [figure-2.png](analysis/figs/figure-2.png) Fitted time-varying meteorological effects on MIR by parasite species.
+  - [figure-3.png](analysis/figs/figure-3.png) Fitted time-varying meteorological effects on MIR by parasite species at different time lags.
+- [00-data-preparation.Rmd](analysis/00-data-preparation.Rmd) `R` markdown for data preparation and preprocessing.
+- [01-exploratory-data-analysis.Rmd](analysis/01-exploratory-data-analysis.Rmd) `R` markdown for exploratory data analysis.
+- [02-time-vaying-coef-models.Rmd](analysis/02-time-vaying-coef-models.Rmd) `R` markdown for model building and interpretation.
 - renv
 - .Rprofile
 - .gitignore
